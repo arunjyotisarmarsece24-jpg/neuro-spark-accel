@@ -1,0 +1,71 @@
+# ==============================================================================
+# Security & Hygiene .gitignore for NeuroSpark / Open Kernel Challenge
+# Prevents accidental leaks of credentials, tokens, logs, and build artifacts
+# ==============================================================================
+
+# 1. Credentials & Auth Secrets (CRITICAL: Never commit these!)
+*.env
+*.env.*
+*.pem
+*.key
+*.token
+auth.json
+.okc/
+secrets/
+id_rsa*
+*.credentials
+
+# 2. Python Artifacts & Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+
+# 3. Vivado, Xilinx, & EDA Build Trash
+*.jou
+*.log
+*.str
+*.dcp
+*.pb
+*.wdb
+*.vcd
+.Xil/
+vivado*.str
+vivado*.jou
+hd_visual/
+xsim.dir/
+clockInfo.txt
+dfx_runtime.txt
+fpga_accelerator/*.txt
+!fpga_accelerator/README.md
+
+# Keep the final production bitstream if needed, or ignore intermediate build checkpoints
+fpga_accelerator/build/*.dcp
+fpga_accelerator/build/*.txt
+
+# 4. OS & Editor Artifacts
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
