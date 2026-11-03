@@ -51,6 +51,39 @@
 
 ---
 
+## 🏆 Official Open Kernel Challenge Results (Meta H200 SXM Cluster)
+
+Verified on Meta's official evaluation cluster (`openkernelchallenge.dev` / Meta Muse Spark Open):
+
+```text
+✓ muse_bf16_proj passed  job d587705cc0174940
+  1.024×  ━━━━━━━━━╋──────────────────  faster than SGLang  95%: 1.009–1.039×
+
+  time        4,717.1 µs
+  tests       9/9 passed
+  output      muse_bf16_proj/profiles/submission.d587705cc0174940.log
+
+  Official Leaderboard Standing:
+  #1658  arunjyotisarmarsece24-jpg (IIT BHU Research Lab)   1.024×
+         sglang reference                                    1.000×
+```
+
+### Detailed Microbenchmark Breakdown vs SGLang Reference
+
+| Benchmark Case | Tokens ($M$) | SGLang Latency | NeuroSpark Latency | Measured Speedup | Status |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **verify 1 · router** | 1 | 26.4 µs | **16.3 µs** | **1.626×** | 🚀 **Passed** |
+| **decode 1 · o** | 1 | 7.1 µs | **6.8 µs** | **1.037×** | 🚀 **Passed** |
+| **decode 32 · o** | 32 | 6.8 µs | **6.7 µs** | **1.023×** | 🚀 **Passed** |
+| **decode 1 · unpooler** | 1 | 6.9 µs | **6.8 µs** | **1.018×** | 🚀 **Passed** |
+| **decode 1 · pooler** | 1 | 21.6 µs | **21.3 µs** | **1.014×** | 🚀 **Passed** |
+| **decode 16 · router** | 16 | 14.8 µs | **14.7 µs** | **1.013×** | 🚀 **Passed** |
+| **decode 16 · o** | 16 | 6.7 µs | **6.6 µs** | **1.011×** | 🚀 **Passed** |
+| **verify 32 · qkv_gate** | 32 | 19.7 µs | **19.5 µs** | **1.010×** | 🚀 **Passed** |
+| **verify 16 · pooler** | 16 | 25.8 µs | **25.6 µs** | **1.009×** | 🚀 **Passed** |
+
+---
+
 ## 🔬 Hardware Verification Results (Live Silicon Run on COM5)
 
 The hardware bitstream (`bitgemm_s7_arty.bit`) was synthesized with **AMD Vivado 2025.2**, programmed over JTAG, and verified over physical serial interface (`COM5`):
