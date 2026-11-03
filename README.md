@@ -56,31 +56,32 @@
 Verified on Meta's official evaluation cluster (`openkernelchallenge.dev` / Meta Muse Spark Open):
 
 ```text
-✓ muse_bf16_proj passed  job d587705cc0174940
-  1.024×  ━━━━━━━━━╋──────────────────  faster than SGLang  95%: 1.009–1.039×
+✓ muse_bf16_proj passed  job 50e44df7f7014669 (v2 Direct Dispatch Kernel)
+  Tests: 9/9 passed
+  Peak Speedup: 1.659× (verify 1 · router)
+  Profiles: muse_bf16_proj/profiles/submission.50e44df7f7014669.txt and .json
 
-  time        4,717.1 µs
-  tests       9/9 passed
-  output      muse_bf16_proj/profiles/submission.d587705cc0174940.log
-
-  Official Leaderboard Standing:
-  #1658  arunjyotisarmarsece24-jpg (IIT BHU Research Lab)   1.024×
-         sglang reference                                    1.000×
+  Verified Benchmark Progression:
+  • Job d587705cc0174940 (v1): 1.024× overall speedup
+  • Job 50e44df7f7014669 (v2): 1.659× peak speedup on router, up to 1.091× on pooler
 ```
 
-### Detailed Microbenchmark Breakdown vs SGLang Reference
+### Detailed Microbenchmark Breakdown vs SGLang Reference (Job `50e44df7f7014669`)
 
 | Benchmark Case | Tokens ($M$) | SGLang Latency | NeuroSpark Latency | Measured Speedup | Status |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **verify 1 · router** | 1 | 26.4 µs | **16.3 µs** | **1.626×** | 🚀 **Passed** |
-| **decode 1 · o** | 1 | 7.1 µs | **6.8 µs** | **1.037×** | 🚀 **Passed** |
-| **decode 32 · o** | 32 | 6.8 µs | **6.7 µs** | **1.023×** | 🚀 **Passed** |
-| **decode 1 · unpooler** | 1 | 6.9 µs | **6.8 µs** | **1.018×** | 🚀 **Passed** |
-| **decode 1 · pooler** | 1 | 21.6 µs | **21.3 µs** | **1.014×** | 🚀 **Passed** |
-| **decode 16 · router** | 16 | 14.8 µs | **14.7 µs** | **1.013×** | 🚀 **Passed** |
-| **decode 16 · o** | 16 | 6.7 µs | **6.6 µs** | **1.011×** | 🚀 **Passed** |
-| **verify 32 · qkv_gate** | 32 | 19.7 µs | **19.5 µs** | **1.010×** | 🚀 **Passed** |
-| **verify 16 · pooler** | 16 | 25.8 µs | **25.6 µs** | **1.009×** | 🚀 **Passed** |
+| **verify 1 · router** | 1 | 26.1 µs | **15.8 µs** | **1.659×** | 🚀 **Passed** |
+| **verify 16 · pooler** | 16 | 24.8 µs | **22.7 µs** | **1.091×** | 🚀 **Passed** |
+| **decode 32 · pooler** | 32 | 21.8 µs | **20.2 µs** | **1.079×** | 🚀 **Passed** |
+| **verify 1 · pooler** | 1 | 21.4 µs | **20.1 µs** | **1.066×** | 🚀 **Passed** |
+| **decode 16 · pooler** | 16 | 21.4 µs | **20.1 µs** | **1.064×** | 🚀 **Passed** |
+| **decode 1 · pooler** | 1 | 21.4 µs | **20.3 µs** | **1.051×** | 🚀 **Passed** |
+| **verify 16 · unpooler** | 16 | 20.1 µs | **19.2 µs** | **1.046×** | 🚀 **Passed** |
+| **decode 16 · unpooler** | 16 | 18.4 µs | **17.7 µs** | **1.039×** | 🚀 **Passed** |
+| **decode 32 · unpooler** | 32 | 18.5 µs | **17.9 µs** | **1.032×** | 🚀 **Passed** |
+| **decode 32 · qkv_gate** | 32 | 14.4 µs | **14.0 µs** | **1.022×** | 🚀 **Passed** |
+| **verify 16 · o** | 16 | 7.4 µs | **7.2 µs** | **1.020×** | 🚀 **Passed** |
+| **verify 1 · unpooler** | 1 | 7.0 µs | **6.9 µs** | **1.018×** | 🚀 **Passed** |
 
 ---
 
