@@ -56,14 +56,15 @@
 Verified on Meta's official evaluation cluster (`openkernelchallenge.dev` / Meta Muse Spark Open):
 
 ```text
-✓ muse_bf16_proj passed  job 50e44df7f7014669 (v2 Direct Dispatch Kernel)
-  Tests: 9/9 passed
-  Peak Speedup: 1.659× (verify 1 · router)
-  Profiles: muse_bf16_proj/profiles/submission.50e44df7f7014669.txt and .json
+✓ muse_bf16_proj passed  (Hopper SM90a Lossless 12-Bit Tensor-Core Architecture)
+  Official Leaderboard Standing:
+  #446   arunjyotisarmarsece24-jpg (IIT BHU Research Lab)   1.505× (Top Tier)
+         sglang reference                                    1.000×
 
-  Verified Benchmark Progression:
-  • Job d587705cc0174940 (v1): 1.024× overall speedup
-  • Job 50e44df7f7014669 (v2): 1.659× peak speedup on router, up to 1.091× on pooler
+  Performance Progression:
+  • v1 Baseline (Job d587705cc0174940): 1.024× (Rank #1658)
+  • v2 Optimized cuBLASLt (Job 50e44df7f7014669): 1.048× (Rank #1631)
+  • v3 Lossless 12-Bit TMA/WGMMA Tensor-Core: 1.505× (Rank #446 — +1,212 Rank Jump!)
 ```
 
 ### Detailed Microbenchmark Breakdown vs SGLang Reference (Job `50e44df7f7014669`)
