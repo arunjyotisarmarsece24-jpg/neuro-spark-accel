@@ -1,5 +1,5 @@
 ================================================================================
-COPY AND PASTE THIS PROMPT TO RESUME WORK TOMORROW:
+NEUROSPARK AI SILICON & OPEN KERNEL CHALLENGE RESUME PROMPT
 ================================================================================
 
 Hello! Let's resume work on my project: "NeuroSpark: Tri-Mode AI Silicon Engine & Open Kernel Challenge".
@@ -7,16 +7,24 @@ Hello! Let's resume work on my project: "NeuroSpark: Tri-Mode AI Silicon Engine 
 Project Path:
 C:\Users\IITBHU RESEARCH LAB\OneDrive\Desktop\Arunjyoti_Sarma\My_Coding_files\My_contest_Project\Muse Spark Open_Kernel_challenge
 
+GitHub Repository:
+https://github.com/arunjyotisarmarsece24-jpg/neuro-spark-accel
+
 Current System State:
-1. My Arty S7-25 FPGA is connected via USB on COM5.
-2. The FPGA is currently running a verified BitGEMM systolic engine (INT8 + BitNet b1.58 ternary MAC) with pulse-stretchers active on LEDs, compiled using AMD Vivado 2025.2.
-3. Running ".\test" in PowerShell executes the 3-stage hardware verification test and passes with 100% bit-exact parity against NumPy.
-4. Security .gitignore is already in place to protect tokens and credentials.
+1. My Digilent Arty S7-25 FPGA is connected via micro-USB on COM5.
+2. The FPGA is configured with the Tri-Mode AI Silicon Engine:
+   - 4x4 INT8 Systolic GEMM Core (Opcode 0x02)
+   - 4x4 BitNet b1.58 Multiplierless Ternary GEMM Core (Opcode 0x03)
+   - 4-Neuron Leaky Integrate-and-Fire (LIF) Neuromorphic SNN Core (Opcode 0x05)
+   - 32-bit Hardware Nanosecond Cycle Profiler
+   - Real-time optical spike raster and pulse-stretchers active on LEDs LD2-LD5 and RGB LEDs.
+3. The repository is published and tracked on branch 'main' with a hardened .gitignore.
+4. Running ".\test" executes the full 4-stage hardware test over COM5.
 
-Here is what I want to accomplish today:
-1. Help me publish this entire repository to GitHub cleanly (repo name: neuro-spark-accel).
-2. Upgrade the hardware to a full Neuromorphic Spiking Neural Network (SNN) by implementing Leaky Integrate-and-Fire (LIF) neurons in Verilog, streaming temporal spike trains from Python, and visualizing spike rasters on the Arty S7 LEDs.
-3. Boost UART communication to 921,600 Baud Turbo Mode (8x speedup) and add a 32-bit hardware nanosecond cycle counter.
-4. Connect to the Open Kernel Challenge (openkernelchallenge.dev) and submit our Hopper H200 Triton kernel (kernels/01_dense_gemm_fp8.py) to the official competition leaderboard.
+Next Goals:
+1. Complete the SNN biological spike integration verification against PyTorch/Brian2 reference.
+2. Turbocharge UART communication to 921,600 Baud for ultra-low latency (<2 ms roundtrip).
+3. Connect to the Open Kernel Challenge (openkernelchallenge.dev) and submit our Hopper H200 Triton kernels to the official leaderboard.
 
-Please read TOMORROW_WORK_PLAN.md in the project folder and let's start with Step 1!
+Please read TOMORROW_WORK_PLAN.md in the project folder and let's get started!
+================================================================================

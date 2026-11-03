@@ -14,7 +14,7 @@ puts "  Output Dir:  $OUTPUT_DIR"
 puts "=========================================================="
 
 # 1. Read Verilog Sources using relative paths (avoids path whitespace issues)
-read_verilog [list rtl/uart_rx.v rtl/uart_tx.v rtl/systolic_pe.v rtl/systolic_gemm_top.v]
+read_verilog [list rtl/uart_rx.v rtl/uart_tx.v rtl/systolic_pe.v rtl/lif_neuron.v rtl/systolic_gemm_top.v]
 
 # 2. Read Constraints
 read_xdc [list constraints/arty_s7_25.xdc]

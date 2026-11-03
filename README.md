@@ -57,7 +57,7 @@ The hardware bitstream (`bitgemm_s7_arty.bit`) was synthesized with **AMD Vivado
 
 ```text
 =================================================================
-  Arty S7-25 BitGEMM Accelerator Hardware Test Harness
+  NeuroSpark AI Silicon Engine Hardware Test Harness
   IIT BHU Research Lab | Open Kernel Challenge Co-Design
 =================================================================
 [*] Scanning 2 serial port(s)...
@@ -72,71 +72,111 @@ Hardware Info: Device Tag: 'ARTY', Architecture Family: Spartan-7
   TEST 1: 4x4 INT8 MATRIX MULTIPLICATION (HARDWARE DSP)
 =================================================================
 Matrix A (INT8):
-[[-5  1  6 -5]
- [-8  0  3 -3]
- [-4 -6  4 -5]
- [-2  1  2  5]]
+[[ 7 -4  6  6]
+ [ 0  1  2  1]
+ [-6 -8 -5 -1]
+ [ 3 -5  4  5]]
 
 Matrix B (INT8):
-[[ 3  5 -8 -4]
- [ 1 -4  0 -2]
- [ 0 -2 -5  6]
- [ 2  4  5 -8]]
+[[ 7 -4  6  1]
+ [-3 -1  3 -6]
+ [ 4 -7 -5  1]
+ [-3  0  6  3]]
 
 Expected Result (CPU NumPy):
-[[-24 -61 -15  94]
- [-30 -58  34  74]
- [-28 -24 -13  92]
- [  5   2  31 -22]]
+[[ 67 -66  36  55]
+ [  2 -15  -1  -1]
+ [-35  67 -41  34]
+ [ 37 -35  13  52]]
 
 Hardware Result (Spartan-7 FPGA):
-[[-24 -61 -15  94]
- [-30 -58  34  74]
- [-28 -24 -13  92]
- [  5   2  31 -22]]
+[[ 67 -66  36  55]
+ [  2 -15  -1  -1]
+ [-35  67 -41  34]
+ [ 37 -35  13  52]]
 
-Roundtrip Latency (UART + Hardware Compute): 15.60 ms
+Roundtrip Latency (UART + Hardware Compute): 11.49 ms
+
 >>> [PASSED] 100% BIT-EXACT NUMERICAL MATCH! <<<
 
 =================================================================
   TEST 2: 4x4 BitNet b1.58 TERNARY GEMM {-1, 0, +1}
 =================================================================
 Activation Matrix A (INT8):
-[[  9  -1  -2  -6]
- [ -5  10  -5  -8]
- [ -9  -5 -10   1]
- [  6  -9   1  -3]]
+[[-6 -8  7  8]
+ [ 0  8  7  7]
+ [-5  2 -2 -3]
+ [ 7  6 -7  3]]
 
 Ternary Weight Matrix B (-1, 0, 1):
-[[-1  1  1  0]
- [-1  1 -1  0]
- [ 1  1 -1  0]
- [-1  0  0 -1]]
+[[-1  1 -1  0]
+ [ 0  1  0  0]
+ [ 1  0 -1  1]
+ [-1  0  0  1]]
 
 Expected Result (CPU NumPy):
-[[ -4   6  12   6]
- [ -2   0 -10   8]
- [  3 -24   6  -1]
- [  7  -2  14   3]]
+[[  5 -14  -1  15]
+ [  0   8  -7  14]
+ [  6  -3   7  -5]
+ [-17  13   0  -4]]
 
 Hardware Result (BitNet Spartan-7 Engine):
-[[ -4   6  12   6]
- [ -2   0 -10   8]
- [  3 -24   6  -1]
- [  7  -2  14   3]]
+[[  5 -14  -1  15]
+ [  0   8  -7  14]
+ [  6  -3   7  -5]
+ [-17  13   0  -4]]
 
-Roundtrip Latency: 15.43 ms
+Roundtrip Latency: 15.39 ms
+
 >>> [PASSED] 100% BIT-EXACT MATCH WITH ZERO MULTIPLIERS! <<<
 
 =================================================================
-  TEST 3: LIVE LED HARDWARE STREAMING (25 Matrix Burst)
-  Watch your board: LD0, LD1, LD3, LD4, LD5 will pulse and dance!
+  TEST 3: 4-NEURON NEUROMORPHIC SNN (LEAKY INTEGRATE-AND-FIRE)
+  Biological Spike Integration across 16 Temporal Time-Steps
 =================================================================
-  [Done] 25/25 Streaming Packets Verified 100% Bit-Exact!
+Synaptic Weight Matrix W (4 Neurons x 4 Inputs):
+[[ -8 -13  33  24]
+ [ 42  43  -9  23]
+ [ -5  22   8  -1]
+ [ 27  29 -14  23]]
+
+Temporal Input Spike Train (16 Time Steps):
+['0110', '1000', '0100', '0110', '1111', '1111', '0010', '0011', '1111', '1000', '0011', '0100', '0010', '0011', '0011', '0010']
+
+Expected Spike Counts (CPU Golden LIF):  [1 4 2 3]
+Hardware Spike Counts (Spartan-7 Silicon): [1 4 2 3]
+
+On-Chip Hardware Profiling Telemetry:
+  * Execution Clock Cycles: 16 cycles
+  * Hardware Pure Compute Latency: 1333.3 ns (1.33 µs at 12 MHz)
+  * Total Roundtrip (Serial + Hardware): 15.12 ms
+
+>>> [PASSED] 100% BIT-EXACT NEUROMORPHIC SNN SPIKE MATCH! <<<
 
 =================================================================
-  ALL HARDWARE ACCELERATION TESTS PASSED (3/3)!
-  Your Arty S7-25 is running verified BitNet & INT8 GEMM.
+  TEST 4: LIVE LED HARDWARE STREAMING BURST
+  Watch your board: LD0, LD1, LD2, LD3, LD4, LD5 will pulse and dance!
+=================================================================
+  [Streaming Packet 01/15] Mode: BitNet b1.58 Ternary   -> LED Pulse Active
+  [Streaming Packet 02/15] Mode: INT8 Standard GEMM     -> LED Pulse Active
+  [Streaming Packet 03/15] Mode: Neuromorphic SNN (LIF) -> LED Pulse Active
+  [Streaming Packet 04/15] Mode: BitNet b1.58 Ternary   -> LED Pulse Active
+  [Streaming Packet 05/15] Mode: INT8 Standard GEMM     -> LED Pulse Active
+  [Streaming Packet 06/15] Mode: Neuromorphic SNN (LIF) -> LED Pulse Active
+  [Streaming Packet 07/15] Mode: BitNet b1.58 Ternary   -> LED Pulse Active
+  [Streaming Packet 08/15] Mode: INT8 Standard GEMM     -> LED Pulse Active
+  [Streaming Packet 09/15] Mode: Neuromorphic SNN (LIF) -> LED Pulse Active
+  [Streaming Packet 10/15] Mode: BitNet b1.58 Ternary   -> LED Pulse Active
+  [Streaming Packet 11/15] Mode: INT8 Standard GEMM     -> LED Pulse Active
+  [Streaming Packet 12/15] Mode: Neuromorphic SNN (LIF) -> LED Pulse Active
+  [Streaming Packet 13/15] Mode: BitNet b1.58 Ternary   -> LED Pulse Active
+  [Streaming Packet 14/15] Mode: INT8 Standard GEMM     -> LED Pulse Active
+  [Streaming Packet 15/15] Mode: Neuromorphic SNN (LIF) -> LED Pulse Active
+  [Done] 15/15 Packets Streamed & Verified across Tri-Mode Silicon!
+
+=================================================================
+  ALL HARDWARE ACCELERATION TESTS PASSED (4/4)!
+  Your Arty S7-25 is running verified SNN, BitNet & INT8 Silicon!
 =================================================================
 ```
 
@@ -151,6 +191,8 @@ Roundtrip Latency: 15.43 ms
 ├── h200_hardware_cheat_sheet.md        # FPGA BRAM/DSP to Hopper SRAM/WGMMA Mapping
 ├── setup_wsl_and_colab.md              # Cloud & Local Linux Environment Setup
 ├── colab_starter_notebook.ipynb        # 1-Click Interactive Google Colab Notebook
+├── test.bat                            # 1-Click Hardware Test Runner (PowerShell/CMD)
+├── RUN_TEST.bat                        # Legacy Interactive Test Runner
 │
 ├── kernels/                            # Datacenter GPU Kernels (NVIDIA H200)
 │   ├── 01_dense_gemm_fp8.py            # Hopper TMA Pipelined FP8 GEMM
@@ -167,10 +209,14 @@ Roundtrip Latency: 15.43 ms
 │   ├── rtl/
 │   │   ├── systolic_gemm_top.v         # Top FSM, Matrix Engine & Pulse Stretchers
 │   │   ├── systolic_pe.v               # INT8 & BitNet Ternary Processing Element
+│   │   ├── lif_neuron.v                # Neuromorphic Leaky Integrate-and-Fire Core
 │   │   ├── uart_rx.v                   # 115200 Baud Deglitched UART Receiver
 │   │   └── uart_tx.v                   # 115200 Baud UART Transmitter
 │   ├── host/
-│   │   └── test_arty_s7.py             # Python Host Harness with Auto-Port Lock
+│   │   └── test_arty_s7.py             # Python Host Harness with Auto-Port & Auto-Flash
+│   ├── scripts/
+│   │   ├── build_bitstream.tcl         # Batch Synthesis & Implementation Script
+│   │   └── program_fpga.tcl            # Batch JTAG Programming Script
 │   └── build/
 │       └── bitgemm_s7_arty.bit         # Production Hardware Bitstream (1.24 MB)
 │

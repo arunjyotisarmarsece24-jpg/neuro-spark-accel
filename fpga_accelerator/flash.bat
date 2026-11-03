@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 set VIVADO_BIN=C:\AMDDesignTools\2025.2\Vivado\bin\vivado.bat
 
 if not exist "%VIVADO_BIN%" (

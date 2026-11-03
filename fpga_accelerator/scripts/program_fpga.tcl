@@ -1,7 +1,12 @@
 # Vivado JTAG Flashing Script for Arty S7-25
 # Connects to local hw_server and programs the Spartan-7 device
 
-set BIT_FILE [file normalize "build/bitgemm_s7_arty.bit"]
+set SCRIPT_DIR [file dirname [file normalize [info script]]]
+set BIT_FILE [file normalize "$SCRIPT_DIR/../build/bitgemm_s7_arty.bit"]
+
+if {![file exists $BIT_FILE]} {
+    set BIT_FILE [file normalize "build/bitgemm_s7_arty.bit"]
+}
 
 if {![file exists $BIT_FILE]} {
     puts "ERROR: Bitstream file $BIT_FILE not found! Run build.bat first."
