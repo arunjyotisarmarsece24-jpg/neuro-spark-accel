@@ -3363,6 +3363,69 @@ def _ensure_skinny_stream(state, name, src, comp, c, kk, n, dev, splits, rgc, ws
         state["tabs"][(name, splits, rgc, n_cfg)] = build_patch_table(c, n_cfg, kk, splits, rgc)
 
 
+
+def _build_fast_dispatch(weights, state):
+    fast = {}
+    ext = _get_ext()
+    for m in (1, 8, 16, 32, 128, 256):
+        for layer, w in weights.items():
+            n = UNPOOLER_SLICE_ROWS if (layer == "unpooler" and m <= 8) else w.shape[0]
+            k = w.shape[1]
+            choice = state.get("choice", {}).get((layer, m)) or _nearby_choice(layer, m, state) or _static_choice(layer, m, state)
+            kind = choice[0]
+            dtype = torch.float32 if layer == "router" else torch.bfloat16
+
+            if kind == "sk2" and _sk2_name(layer, m) in state.get("sk2", {}) and _route_key(layer, m, "sk2") not in state.get("disabled", ()):
+                name = _sk2_name(layer, m)
+                ci, stream, tab, pmax, b4, n_rows = state["sk2"][name]
+                tokr = _sk2_tokr(m)
+                dummy = state["dummy"]
+                sk2_fn = ext.sk2
+                def make_sk2(stream=stream, tab=tab, pmax=pmax, b4=b4, m=m, n=n, k=k, ci=ci, tokr=tokr, dummy=dummy, sk2_fn=sk2_fn, dtype=dtype):
+                    def run(x):
+                        out = torch.empty((m, n), dtype=dtype, device=x.device)
+                        sk2_fn(stream, x, out, tab, pmax, b4, m, n, k, ci, tokr, 0, dummy)
+                        return out
+                    return run
+                fast[(layer, m)] = make_sk2()
+
+            elif kind == "cgemv" and layer in state.get("cg", {}) and _route_key(layer, m, "cgemv") not in state.get("disabled", ()):
+                cg = state["cg"][layer]
+                rows, nth = CG_CONFIGS[layer]
+                L, C, tab, pmax, b4 = cg["L"], cg["C"], cg["tab"], cg["pmax"], cg["base4"]
+                cgemv_fn = ext.cgemv
+                def make_cgemv(L=L, C=C, tab=tab, pmax=pmax, b4=b4, rows=rows, nth=nth, cgemv_fn=cgemv_fn, m=m, n=n, dtype=dtype):
+                    def run(x):
+                        out = torch.empty((m, n), dtype=dtype, device=x.device)
+                        cgemv_fn(L, C, x, tab, pmax, out, b4, rows, nth)
+                        return out
+                    return run
+                fast[(layer, m)] = make_cgemv()
+
+            elif kind == "sgemv" and layer in state.get("raw", {}) and _route_key(layer, m, "sgemv") not in state.get("disabled", ()):
+                raw_w = state["raw"][layer]
+                sgemv_fn = ext.sgemv
+                def make_sgemv(raw_w=raw_w, n=n, sgemv_fn=sgemv_fn, m=m, dtype=dtype):
+                    def run(x):
+                        out = torch.empty((m, n), dtype=dtype, device=x.device)
+                        sgemv_fn(raw_w, x, out, n)
+                        return out
+                    return run
+                fast[(layer, m)] = make_sgemv()
+
+            elif kind == "rgemv" and "router_f32" in state and _route_key(layer, m, "rgemv") not in state.get("disabled", ()):
+                rf32 = state["router_f32"]
+                rgemv_fn = ext.rgemv
+                def make_rgemv(rf32=rf32, m=m, n=n, rgemv_fn=rgemv_fn, dtype=dtype):
+                    def run(x):
+                        out = torch.empty((m, n), dtype=dtype, device=x.device)
+                        rgemv_fn(rf32, x, out, m)
+                        return out
+                    return run
+                fast[(layer, m)] = make_rgemv()
+
+    state["fast_dispatch"] = fast
+
 def prepare(weights):
     _get_ext()  # compile now, so a build failure surfaces in prepare(), not mid-run
     # the CUTLASS extension builds in the background (nvcc is a subprocess) while the weights are compressed; started
@@ -3473,6 +3536,7 @@ def prepare(weights):
         print(f"[okc] CUTLASS route off: {_cut_err}", file=sys.stderr)
     _selftest(weights, state)
     _autotune(weights, state)
+    _build_fast_dispatch(weights, state)
     torch.cuda.empty_cache()
     return state
 
@@ -3806,8 +3870,13 @@ def _nearby_choice(layer, m, state):
 # Entry point: the harness calls prepare(weights) once, then kernel_fn per call.
 # ---------------------------------------------------------------------------
 def kernel_fn(data, state):
-    x = data["x"]
     cfg = data["config"]
+    fast = state.get("fast_dispatch")
+    if fast is not None:
+        runner = fast.get((cfg["layer"], cfg["m"]))
+        if runner is not None:
+            return runner(data["x"])
+    x = data["x"]
     layer, m, n, k = cfg["layer"], cfg["m"], cfg["n"], cfg["k"]
     choice = state.get("choice", {}).get((layer, m)) or _nearby_choice(layer, m, state) or _static_choice(layer, m, state)
     out = _run(choice, x, layer, m, n, k, state)
