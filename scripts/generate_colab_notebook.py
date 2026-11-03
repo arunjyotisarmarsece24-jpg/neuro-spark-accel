@@ -159,7 +159,8 @@ notebook = {
             "metadata": {},
             "source": [
                 "## Step 3: Login to OKC with GitHub\n",
-                "Click the link printed below, enter your 8-character device code, and approve."
+                "1. If already logged in, this will verify your session instantly.\n",
+                "2. If not logged in, copy the 8-character code shown below, click **[github.com/login/device](https://github.com/login/device)**, and click Authorize."
             ]
         },
         {
@@ -168,7 +169,13 @@ notebook = {
             "metadata": {},
             "outputs": [],
             "source": [
-                "!okc login"
+                "# Check if already authenticated\n",
+                "res = !okc problems 2>/dev/null\n",
+                "if any('muse_bf16_proj' in line for line in res):\n",
+                "    print('✓ You are ALREADY authenticated! You can proceed directly to Step 4.')\n",
+                "else:\n",
+                "    print('Initiating GitHub Device Login (auto-accepting terms)...')\n",
+                "    !printf 'y\\n' | okc login\n"
             ]
         },
         {
