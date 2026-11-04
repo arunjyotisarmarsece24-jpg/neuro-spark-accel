@@ -2204,7 +2204,7 @@ GQX_CONFIGS = {  # (layer, bn) -> (nwg, cl, nstage): grid = N / (64 nwg) * cl CT
     ("qkv_gate", 128): (1, 3, 8),   # m 33..128: 36 row blocks x 3 K-thirds = 108 CTAs (cuBLAS 16.4 -> 14.0 us at m=128)
 }
 USE_GQX = True
-TORCHT_LAYERS = ("unpooler", "o")   # layers that also get a K-major BF16 copy for the "torchT" (mm(x, W^T)) route
+TORCHT_LAYERS = ("qkv_gate", "o", "pooler", "unpooler")   # layers that also get a K-major BF16 copy for the "torchT" (mm(x, W^T)) route
 
 
 def _gqx_src(sm90):
@@ -3456,9 +3456,14 @@ def _build_fast_dispatch(weights, state):
 
             elif kind == "torchT" and layer in state.get("rawT", {}):
                 w_t = state["rawT"][layer]
-                def make_torchT(w_t=w_t):
+                t_slices = state.get("rawT_slices", {})
+                full_n = w.shape[0]
+                def make_torchT(w_t=w_t, layer=layer, t_slices=t_slices, full_n=full_n):
                     def run(x, n):
-                        return torch.mm(x, w_t)
+                        if n == full_n:
+                            return torch.mm(x, w_t)
+                        wt = t_slices.get((layer, n))
+                        return torch.mm(x, wt if wt is not None else w_t[:, :n])
                     return run
                 fast[(layer, m)] = make_torchT()
 
@@ -3475,11 +3480,15 @@ def _build_fast_dispatch(weights, state):
                             return run
                         fast[(layer, m)] = make_torch_r()
                 elif layer in state.get("raw", {}):
-                    nn = UNPOOLER_SLICE_ROWS if (layer == "unpooler" and m <= 8) else w.shape[0]
-                    w_mat = state["raw"][layer][:nn]
-                    def make_torch_lin(w_mat=w_mat):
+                    w_mat = state["raw"][layer]
+                    raw_slices = state.get("raw_slices", {})
+                    full_n = w.shape[0]
+                    def make_torch_lin(w_mat=w_mat, layer=layer, raw_slices=raw_slices, full_n=full_n):
                         def run(x, n):
-                            return F.linear(x, w_mat)
+                            if n == full_n:
+                                return F.linear(x, w_mat)
+                            wm = raw_slices.get((layer, n))
+                            return F.linear(x, wm if wm is not None else w_mat[:n])
                         return run
                     fast[(layer, m)] = make_torch_lin()
 
@@ -3561,6 +3570,13 @@ def prepare(weights):
                     state.setdefault("cg", {})[name] = cg
             if name in TORCHT_LAYERS and sm90_:
                 state.setdefault("rawT", {})[name] = w.t().contiguous()
+            state.setdefault("raw_slices", {})[(name, w.shape[0])] = w
+            if name in state.get("rawT", {}):
+                state.setdefault("rawT_slices", {})[(name, w.shape[0])] = state["rawT"][name]
+            if name == "unpooler":
+                state["raw_slices"][(name, UNPOOLER_SLICE_ROWS)] = w[:UNPOOLER_SLICE_ROWS].contiguous()
+                if name in state.get("rawT", {}):
+                    state["rawT_slices"][(name, UNPOOLER_SLICE_ROWS)] = state["rawT"][name][:, :UNPOOLER_SLICE_ROWS].contiguous()
             c = pack_compressed(w) if name in COMPRESSED_LAYERS else None
             if c is not None:
                 src, comp = c["packed"].transpose(0, 1).contiguous(), True  # [rg, u, 3, 32, 16]
@@ -3739,7 +3755,13 @@ def _run_torch(x, layer, m, n, k, state):
         acc = torch.mm(x, state["router_hi_t"], out_dtype=torch.float32)
         acc += torch.mm(x, state["router_lo_t"], out_dtype=torch.float32)
         return acc
-    return F.linear(x, state["raw"][layer][:n])   # what SGLang's bf16 dispatch runs on H200
+    w = state["raw"][layer]
+    if n == w.shape[0]:
+        return F.linear(x, w)
+    slices = state.get("raw_slices")
+    if slices and (layer, n) in slices:
+        return F.linear(x, slices[(layer, n)])
+    return F.linear(x, w[:n])
 
 
 def _run(choice, x, layer, m, n, k, state):
@@ -3779,7 +3801,13 @@ def _run(choice, x, layer, m, n, k, state):
         _get_ext().rk(state["router_cat"], x, out, _rk_splits(m, state["nsm"]), state["rk_zc"])
         return out
     if kind == "torchT":   # cuBLAS on a K-major copy of W: a different (faster) kernel choice for unpooler m=128
-        return torch.mm(x, state["rawT"][layer])
+        w_t = state["rawT"][layer]
+        if n == w_t.shape[1]:
+            return torch.mm(x, w_t)
+        slices_t = state.get("rawT_slices")
+        if slices_t and (layer, n) in slices_t:
+            return torch.mm(x, slices_t[(layer, n)])
+        return torch.mm(x, w_t[:, :n])
     return _run_torch(x, layer, m, n, k, state)
 
 
