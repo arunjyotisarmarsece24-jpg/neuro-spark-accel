@@ -108,10 +108,26 @@ sub_proc = subprocess.Popen(
     text=True,
     bufsize=1
 )
+submit_output = ""
 for line in sub_proc.stdout:
     sys.stdout.write(line)
     sys.stdout.flush()
+    submit_output += line
 sub_proc.wait()
+
+# If submission succeeded or matched an earlier job, auto-fetch status
+import re
+match = re.search(r"okc status ([0-9a-fA-F]+)", submit_output)
+if match:
+    job_id = match.group(1)
+    print(f"\n=== FETCHING DETAILED STATUS FOR JOB {job_id} ===")
+    status_proc = subprocess.run([OKC_BIN, "status", job_id], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    print(status_proc.stdout)
+
+# Also show leaderboard
+print("\n=== CURRENT OKC LEADERBOARD ===")
+lb_proc = subprocess.run([OKC_BIN, "leaderboard", "muse_bf16_proj"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+print(lb_proc.stdout)
 
 # 6. Parse and print cluster tune and disable log
 logs = sorted(glob.glob("muse_bf16_proj/profiles/*.log"), key=os.path.getmtime, reverse=True)
