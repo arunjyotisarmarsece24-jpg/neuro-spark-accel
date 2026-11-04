@@ -2217,7 +2217,7 @@ GQX_CONFIGS = {  # (layer, bn) -> (nwg, cl, nstage): grid = N / (64 nwg) * cl CT
     ("unpooler", 256): (1, 2, 4),   # 128 row blocks x 2 K-halves = 256 CTAs (SMEM 225.1 KB)
 }
 USE_GQX = True
-TORCHT_LAYERS = ("unpooler",)   # layers that also get a K-major BF16 copy for the "torchT" (mm(x, W^T)) route
+TORCHT_LAYERS = ("pooler", "unpooler", "qkv_gate", "o")   # layers that also get a K-major BF16 copy for the "torchT" (mm(x, W^T)) route
 
 
 def _gqx_src(sm90):
@@ -3468,15 +3468,13 @@ def _build_fast_dispatch(weights, state):
                 fast[(layer, m)] = make_cut()
 
             elif kind == "torchT" and layer in state.get("rawT", {}):
-                w_t = state["rawT"][layer]
-                t_slices = state.get("rawT_slices", {})
-                full_n = w.shape[0]
-                def make_torchT(w_t=w_t, layer=layer, t_slices=t_slices, full_n=full_n):
+                nn = UNPOOLER_SLICE_ROWS if (layer == "unpooler" and m <= 8) else w.shape[0]
+                wt = state["rawT"][layer][:, :nn].contiguous() if nn < w.shape[0] else state["rawT"][layer]
+                def make_torchT(wt=wt):
                     def run(x, n):
-                        if n == full_n:
-                            return torch.mm(x, w_t)
-                        wt = t_slices.get((layer, n))
-                        return torch.mm(x, wt if wt is not None else w_t[:, :n])
+                        if n == wt.shape[1]:
+                            return torch.mm(x, wt)
+                        return torch.mm(x, wt[:, :n])
                     return run
                 fast[(layer, m)] = make_torchT()
 
@@ -3487,21 +3485,19 @@ def _build_fast_dispatch(weights, state):
                     if r_hi is not None and r_lo is not None:
                         def make_torch_r(r_hi=r_hi, r_lo=r_lo):
                             def run(x, n):
-                                acc = torch.mm(x, r_hi, out_dtype=torch.float32)
-                                acc += torch.mm(x, r_lo, out_dtype=torch.float32)
-                                return acc
+                                out = torch.mm(x, r_hi, out_dtype=torch.float32)
+                                out.addmm_(x, r_lo)
+                                return out
                             return run
                         fast[(layer, m)] = make_torch_r()
                 elif layer in state.get("raw", {}):
-                    w_mat = state["raw"][layer]
-                    raw_slices = state.get("raw_slices", {})
-                    full_n = w.shape[0]
-                    def make_torch_lin(w_mat=w_mat, layer=layer, raw_slices=raw_slices, full_n=full_n):
+                    nn = UNPOOLER_SLICE_ROWS if (layer == "unpooler" and m <= 8) else w.shape[0]
+                    wm = state["raw"][layer][:nn].contiguous() if nn < w.shape[0] else state["raw"][layer]
+                    def make_torch_lin(wm=wm):
                         def run(x, n):
-                            if n == full_n:
-                                return F.linear(x, w_mat)
-                            wm = raw_slices.get((layer, n))
-                            return F.linear(x, wm if wm is not None else w_mat[:n])
+                            if n == wm.shape[0]:
+                                return F.linear(x, wm)
+                            return F.linear(x, wm[:n])
                         return run
                     fast[(layer, m)] = make_torch_lin()
 
