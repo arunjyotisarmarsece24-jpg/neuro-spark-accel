@@ -2217,7 +2217,7 @@ GQX_CONFIGS = {  # (layer, bn) -> (nwg, cl, nstage): grid = N / (64 nwg) * cl CT
     ("unpooler", 256): (1, 2, 4),   # 128 row blocks x 2 K-halves = 256 CTAs (SMEM 225.1 KB)
 }
 USE_GQX = True
-TORCHT_LAYERS = ("unpooler", "o")   # layers that also get a K-major BF16 copy for the "torchT" (mm(x, W^T)) route
+TORCHT_LAYERS = ("unpooler",)   # layers that also get a K-major BF16 copy for the "torchT" (mm(x, W^T)) route
 
 
 def _gqx_src(sm90):
@@ -2780,7 +2780,7 @@ def _get_ext():
 # FP32 accumulate, tile 128 (W rows) x 64 (tokens) x 64, cluster 1x1. Headers: CUTLASS bundled with flashinfer (in the
 # SGLang image). Sweep (pod/cutsweep.py, 54 configs x 8 shapes): it beats cuBLAS only for pooler m=256 (31.3 vs 34.5 us
 # raw); a missing header or a failed build just leaves the route out.
-CUTLASS_LAYERS = {"pooler"}   # layers that get the CUTLASS candidate (scored m=256 only)
+CUTLASS_LAYERS = {"pooler", "unpooler", "qkv_gate", "o"}   # all dense BF16 projection layers
 CUTLASS_BUILD_TIMEOUT = 170   # seconds prepare waits for the CUTLASS build (main build ~25 s; prepare's limit is 300 s)
 CUTLASS_SRC = r"""
 /***************************************************************************************************
@@ -3906,7 +3906,7 @@ def _candidates(layer, m, state):
         c.insert(0, ("cgemv",))
     if layer in TORCHT_LAYERS and 32 < m <= 256 and layer in state.get("rawT", {}):
         c.append(("torchT",))
-    if (128 < m <= 256 and layer in state.get("cut_layers", ()) and _cut_ext is not None
+    if (32 < m <= 256 and layer in state.get("cut_layers", ()) and _cut_ext is not None
             and _route_key(layer, m, "cutlass") not in state["disabled"]):
         c.append(("cutlass",))
     if c[-1][0] != "torch" and all(ch[0] != "torch" for ch in c):
