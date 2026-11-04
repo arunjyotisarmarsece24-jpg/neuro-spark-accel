@@ -2781,7 +2781,7 @@ def _get_ext():
 # SGLang image). Sweep (pod/cutsweep.py, 54 configs x 8 shapes): it beats cuBLAS only for pooler m=256 (31.3 vs 34.5 us
 # raw); a missing header or a failed build just leaves the route out.
 CUTLASS_LAYERS = {"pooler", "unpooler", "qkv_gate", "o"}   # all dense BF16 projection layers
-CUTLASS_BUILD_TIMEOUT = 170   # seconds prepare waits for the CUTLASS build (main build ~25 s; prepare's limit is 300 s)
+CUTLASS_BUILD_TIMEOUT = 220   # seconds prepare waits for the CUTLASS build (main build ~25 s; prepare's limit is 300 s)
 CUTLASS_SRC = r"""
 /***************************************************************************************************
  * The GEMM below instantiates NVIDIA CUTLASS 3.x/4.x templates (header-only, compiled from the CUTLASS headers that
@@ -2830,42 +2830,81 @@ using namespace cute;
 using EA = cutlass::bfloat16_t; using LA = cutlass::layout::RowMajor;
 using EB = cutlass::bfloat16_t; using LB = cutlass::layout::ColumnMajor;
 using EC = cutlass::bfloat16_t; using LC = cutlass::layout::ColumnMajor;
-using TileShape = Shape<_128, _64, _64>;
+using TileShape64 = Shape<_128, _64, _64>;
+using TileShape128 = Shape<_128, _128, _64>;
 using ClusterShape = Shape<_1, _1, _1>;
-using Epi = typename cutlass::epilogue::collective::CollectiveBuilder<
-    cutlass::arch::Sm90, cutlass::arch::OpClassTensorOp, TileShape, ClusterShape,
+
+using Epi64 = typename cutlass::epilogue::collective::CollectiveBuilder<
+    cutlass::arch::Sm90, cutlass::arch::OpClassTensorOp, TileShape64, ClusterShape,
     cutlass::epilogue::collective::EpilogueTileAuto, float, float, EC, LC, 8, EC, LC, 8,
     cutlass::epilogue::TmaWarpSpecialized>::CollectiveOp;
-using Main = typename cutlass::gemm::collective::CollectiveBuilder<
-    cutlass::arch::Sm90, cutlass::arch::OpClassTensorOp, EA, LA, 8, EB, LB, 8, float, TileShape, ClusterShape,
-    cutlass::gemm::collective::StageCountAutoCarveout<static_cast<int>(sizeof(typename Epi::SharedStorage))>,
+using Main64 = typename cutlass::gemm::collective::CollectiveBuilder<
+    cutlass::arch::Sm90, cutlass::arch::OpClassTensorOp, EA, LA, 8, EB, LB, 8, float, TileShape64, ClusterShape,
+    cutlass::gemm::collective::StageCountAutoCarveout<static_cast<int>(sizeof(typename Epi64::SharedStorage))>,
     cutlass::gemm::KernelTmaWarpSpecializedPingpong>::CollectiveOp;
-using Kernel = cutlass::gemm::kernel::GemmUniversal<Shape<int, int, int, int>, Main, Epi, cutlass::gemm::PersistentScheduler>;
-using Gemm = cutlass::gemm::device::GemmUniversalAdapter<Kernel>;
+using Kernel64 = cutlass::gemm::kernel::GemmUniversal<Shape<int, int, int, int>, Main64, Epi64, cutlass::gemm::PersistentScheduler>;
+using Gemm64 = cutlass::gemm::device::GemmUniversalAdapter<Kernel64>;
+
+using Epi128 = typename cutlass::epilogue::collective::CollectiveBuilder<
+    cutlass::arch::Sm90, cutlass::arch::OpClassTensorOp, TileShape128, ClusterShape,
+    cutlass::epilogue::collective::EpilogueTileAuto, float, float, EC, LC, 8, EC, LC, 8,
+    cutlass::epilogue::TmaWarpSpecialized>::CollectiveOp;
+using Main128 = typename cutlass::gemm::collective::CollectiveBuilder<
+    cutlass::arch::Sm90, cutlass::arch::OpClassTensorOp, EA, LA, 8, EB, LB, 8, float, TileShape128, ClusterShape,
+    cutlass::gemm::collective::StageCountAutoCarveout<static_cast<int>(sizeof(typename Epi128::SharedStorage))>,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpong>::CollectiveOp;
+using Kernel128 = cutlass::gemm::kernel::GemmUniversal<Shape<int, int, int, int>, Main128, Epi128, cutlass::gemm::PersistentScheduler>;
+using Gemm128 = cutlass::gemm::device::GemmUniversalAdapter<Kernel128>;
+
 int64_t cut_ws(at::Tensor W, at::Tensor x, at::Tensor out) {
   const int M = W.size(0), K = W.size(1), N = x.size(0);
-  auto sA = cutlass::make_cute_packed_stride(typename Gemm::GemmKernel::StrideA{}, cute::make_shape(M, K, 1));
-  auto sB = cutlass::make_cute_packed_stride(typename Gemm::GemmKernel::StrideB{}, cute::make_shape(N, K, 1));
-  auto sC = cutlass::make_cute_packed_stride(typename Gemm::GemmKernel::StrideC{}, cute::make_shape(M, N, 1));
-  typename Gemm::Arguments args{cutlass::gemm::GemmUniversalMode::kGemm, {M, N, K, 1},
-      {reinterpret_cast<EA*>(W.data_ptr()), sA, reinterpret_cast<EB*>(x.data_ptr()), sB},
-      {{1.f, 0.f}, reinterpret_cast<EC*>(out.data_ptr()), sC, reinterpret_cast<EC*>(out.data_ptr()), sC}};
-  return (int64_t)Gemm::get_workspace_size(args);
+  if (M >= 8192 && N >= 128) {
+    auto sA = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideA{}, cute::make_shape(M, K, 1));
+    auto sB = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideB{}, cute::make_shape(N, K, 1));
+    auto sC = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideC{}, cute::make_shape(M, N, 1));
+    typename Gemm128::Arguments args{cutlass::gemm::GemmUniversalMode::kGemm, {M, N, K, 1},
+        {reinterpret_cast<EA*>(W.data_ptr()), sA, reinterpret_cast<EB*>(x.data_ptr()), sB},
+        {{1.f, 0.f}, reinterpret_cast<EC*>(out.data_ptr()), sC, reinterpret_cast<EC*>(out.data_ptr()), sC}};
+    return (int64_t)Gemm128::get_workspace_size(args);
+  } else {
+    auto sA = cutlass::make_cute_packed_stride(typename Gemm64::GemmKernel::StrideA{}, cute::make_shape(M, K, 1));
+    auto sB = cutlass::make_cute_packed_stride(typename Gemm64::GemmKernel::StrideB{}, cute::make_shape(N, K, 1));
+    auto sC = cutlass::make_cute_packed_stride(typename Gemm64::GemmKernel::StrideC{}, cute::make_shape(M, N, 1));
+    typename Gemm64::Arguments args{cutlass::gemm::GemmUniversalMode::kGemm, {M, N, K, 1},
+        {reinterpret_cast<EA*>(W.data_ptr()), sA, reinterpret_cast<EB*>(x.data_ptr()), sB},
+        {{1.f, 0.f}, reinterpret_cast<EC*>(out.data_ptr()), sC, reinterpret_cast<EC*>(out.data_ptr()), sC}};
+    return (int64_t)Gemm64::get_workspace_size(args);
+  }
 }
+
 void cut_gemm(at::Tensor W, at::Tensor x, at::Tensor out, at::Tensor ws) {
   const int M = W.size(0), K = W.size(1), N = x.size(0);
-  auto sA = cutlass::make_cute_packed_stride(typename Gemm::GemmKernel::StrideA{}, cute::make_shape(M, K, 1));
-  auto sB = cutlass::make_cute_packed_stride(typename Gemm::GemmKernel::StrideB{}, cute::make_shape(N, K, 1));
-  auto sC = cutlass::make_cute_packed_stride(typename Gemm::GemmKernel::StrideC{}, cute::make_shape(M, N, 1));
-  typename Gemm::Arguments args{cutlass::gemm::GemmUniversalMode::kGemm, {M, N, K, 1},
-      {reinterpret_cast<EA*>(W.data_ptr()), sA, reinterpret_cast<EB*>(x.data_ptr()), sB},
-      {{1.f, 0.f}, reinterpret_cast<EC*>(out.data_ptr()), sC, reinterpret_cast<EC*>(out.data_ptr()), sC}};
-  Gemm gemm;
-  TORCH_CHECK((size_t)ws.numel() >= Gemm::get_workspace_size(args), "cut_gemm: workspace");
   auto st = at::cuda::getCurrentCUDAStream();
-  TORCH_CHECK(gemm.can_implement(args) == cutlass::Status::kSuccess, "cut_gemm: cannot implement");
-  TORCH_CHECK(gemm.initialize(args, ws.data_ptr(), st) == cutlass::Status::kSuccess, "cut_gemm: init");
-  TORCH_CHECK(gemm.run(st) == cutlass::Status::kSuccess, "cut_gemm: run");
+  if (M >= 8192 && N >= 128) {
+    auto sA = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideA{}, cute::make_shape(M, K, 1));
+    auto sB = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideB{}, cute::make_shape(N, K, 1));
+    auto sC = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideC{}, cute::make_shape(M, N, 1));
+    typename Gemm128::Arguments args{cutlass::gemm::GemmUniversalMode::kGemm, {M, N, K, 1},
+        {reinterpret_cast<EA*>(W.data_ptr()), sA, reinterpret_cast<EB*>(x.data_ptr()), sB},
+        {{1.f, 0.f}, reinterpret_cast<EC*>(out.data_ptr()), sC, reinterpret_cast<EC*>(out.data_ptr()), sC}};
+    Gemm128 gemm;
+    TORCH_CHECK((size_t)ws.numel() >= Gemm128::get_workspace_size(args), "cut_gemm: workspace");
+    TORCH_CHECK(gemm.can_implement(args) == cutlass::Status::kSuccess, "cut_gemm: cannot implement 128");
+    TORCH_CHECK(gemm.initialize(args, ws.data_ptr(), st) == cutlass::Status::kSuccess, "cut_gemm: init 128");
+    TORCH_CHECK(gemm.run(st) == cutlass::Status::kSuccess, "cut_gemm: run 128");
+  } else {
+    auto sA = cutlass::make_cute_packed_stride(typename Gemm64::GemmKernel::StrideA{}, cute::make_shape(M, K, 1));
+    auto sB = cutlass::make_cute_packed_stride(typename Gemm64::GemmKernel::StrideB{}, cute::make_shape(N, K, 1));
+    auto sC = cutlass::make_cute_packed_stride(typename Gemm64::GemmKernel::StrideC{}, cute::make_shape(M, N, 1));
+    typename Gemm64::Arguments args{cutlass::gemm::GemmUniversalMode::kGemm, {M, N, K, 1},
+        {reinterpret_cast<EA*>(W.data_ptr()), sA, reinterpret_cast<EB*>(x.data_ptr()), sB},
+        {{1.f, 0.f}, reinterpret_cast<EC*>(out.data_ptr()), sC, reinterpret_cast<EC*>(out.data_ptr()), sC}};
+    Gemm64 gemm;
+    TORCH_CHECK((size_t)ws.numel() >= Gemm64::get_workspace_size(args), "cut_gemm: workspace");
+    TORCH_CHECK(gemm.can_implement(args) == cutlass::Status::kSuccess, "cut_gemm: cannot implement 64");
+    TORCH_CHECK(gemm.initialize(args, ws.data_ptr(), st) == cutlass::Status::kSuccess, "cut_gemm: init 64");
+    TORCH_CHECK(gemm.run(st) == cutlass::Status::kSuccess, "cut_gemm: run 64");
+  }
 }
 """
 _cut_ext = None
@@ -2885,7 +2924,7 @@ def _build_cutlass():
         if not all(os.path.isdir(d) for d in inc):
             raise RuntimeError("CUTLASS headers missing under " + root)
         _cut_ext = load_inline(
-            name=f"okc_bf16proj_v141_cutlass_{major}{minor}a",
+            name=f"okc_bf16proj_v142_cutlass_{major}{minor}a",
             cpp_sources="#include <torch/extension.h>\nint64_t cut_ws(at::Tensor W, at::Tensor x, at::Tensor out);\n"
                         "void cut_gemm(at::Tensor W, at::Tensor x, at::Tensor out, at::Tensor ws);",
             cuda_sources=CUTLASS_SRC, functions=["cut_ws", "cut_gemm"], extra_include_paths=inc,
