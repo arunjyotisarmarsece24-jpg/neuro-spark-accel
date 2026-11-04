@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import glob
+import json
 import os
 import pty
 import select
@@ -46,13 +48,12 @@ if needs_login:
     )
     os.close(slave)
 
-    # Automatically send 'y\n' to agree to challenge terms
     time.sleep(1.0)
     os.write(master, b"y\n")
 
     authenticated = False
     start_time = time.time()
-    while time.time() - start_time < 300:  # 5 min timeout
+    while time.time() - start_time < 300:
         r, _, _ = select.select([master], [], [], 0.5)
         if r:
             try:
@@ -64,12 +65,10 @@ if needs_login:
                 sys.stdout.flush()
 
                 if "recruiting and business purposes" in text:
-                    # Automatically send 'y\n' for recruiting question
                     os.write(master, b"y\n")
 
                 if "token saved" in text or "signed in as" in text:
                     authenticated = True
-                    # Let it flush the rest of message
                     time.sleep(1.0)
                     break
             except OSError:
@@ -83,16 +82,13 @@ if needs_login:
     except Exception:
         pass
 
-    # Backup the token
     if os.path.exists(CONFIG_FILE):
         os.makedirs(os.path.dirname(BACKUP_FILE), exist_ok=True)
         shutil.copy(CONFIG_FILE, BACKUP_FILE)
         print("\n✓ Auth token backed up successfully!")
-    else:
-        print("\n[!] Please make sure you authorized the code in your browser.")
 
-# 4. Fetch the latest 199 KB Beast Kernel (commit c6faf91)
-print("\n[3/4] Downloading latest 199 KB Beast Kernel (commit c6faf91)...")
+# 4. Fetch the latest Beast Kernel
+print("\n[3/4] Downloading latest Beast Kernel from GitHub...")
 os.makedirs("muse_bf16_proj", exist_ok=True)
 kernel_url = "https://raw.githubusercontent.com/arunjyotisarmarsece24-jpg/neuro-spark-accel/main/colab_submission.py"
 urllib.request.urlretrieve(kernel_url, "muse_bf16_proj/submission.py")
@@ -112,3 +108,17 @@ for line in sub_proc.stdout:
     sys.stdout.write(line)
     sys.stdout.flush()
 sub_proc.wait()
+
+# 6. Parse and print profile JSON details if available
+profiles = sorted(glob.glob("muse_bf16_proj/profiles/*.json"), key=os.path.getmtime, reverse=True)
+if profiles:
+    try:
+        with open(profiles[0], "r") as f:
+            prof = json.load(f)
+        print("\n=== PROFILE JSON METRIC SUMMARY ===")
+        print("Metric:", prof.get("metric"))
+        print("Score:", prof.get("score"))
+        print("Speedup:", prof.get("speedup"))
+        print("Time (µs):", prof.get("time"))
+    except Exception as e:
+        pass
