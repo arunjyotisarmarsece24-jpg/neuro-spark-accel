@@ -3057,14 +3057,19 @@ SK2_CONFIGS = [  # (name, layer, n_rows, R rows/CTA, NT, NWR, WSK, UPW, NACC, CL
     ('qkv8t_r144', 'qkv_gate', 2304, 24, 3, 1, 4, 2, 2, 1),         # tokr8 [0.969 vs 0.979]
     ('qkv16t_r200', 'qkv_gate', 2304, 24, 3, 1, 4, 2, 2, 1),        # tokr16 [0.985 vs 0.994]
     ('o16t_r68', 'o', 8192, 32, 2, 2, 1, 4, 2, 1),                  # tokr16 [0.937 vs 0.957]
+    ('unpooler16t_r192', 'unpooler', 8192, 32, 2, 2, 2, 2, 1, 1),
+    ('unpooler32_r208', 'unpooler', 8192, 64, 4, 2, 2, 2, 1, 1),
+    ('pooler32_r208', 'pooler', 4096, 32, 2, 2, 2, 2, 1, 1),
+    ('pooler8h_r192', 'pooler', 4096, 16, 1, 2, 2, 4, 1, 1),
+    ('o16t_r144', 'o', 8192, 32, 2, 2, 1, 4, 2, 1),
 ]
 SK2_PICK = {  # (layer, tokr) -> config name
     ('o', 8): 'o8h_r88',
-    ('o', 16): 'o16t_r68',
+    ('o', 16): 'o16t_r144',
     ('o', 32): 'o32h_r100',
-    ('pooler', 8): 'pooler8h_r72',
+    ('pooler', 8): 'pooler8h_r192',
     ('pooler', 16): 'pooler16t_r192',
-    ('pooler', 32): 'pooler32_r144',
+    ('pooler', 32): 'pooler32_r208',
     ('qkv_gate', 8): 'qkv8t_r144',
     ('qkv_gate', 16): 'qkv16t_r200',
     ('qkv_gate', 32): 'qkv32_r208',
@@ -3072,8 +3077,8 @@ SK2_PICK = {  # (layer, tokr) -> config name
     ('router', 16): 'router',
     ('router', 32): 'router',
     ('unpooler', 8): 'slice8_r192',
-    ('unpooler', 16): 'unpooler16t_r72',
-    ('unpooler', 32): 'unpooler32_r144',
+    ('unpooler', 16): 'unpooler16t_r192',
+    ('unpooler', 32): 'unpooler32_r208',
 }
 SK2_K = {"pooler": 8192, "unpooler": 4096, "o": 1024, "qkv_gate": 8192, "router": 8192}
 USE_SK2 = True
@@ -3367,7 +3372,8 @@ def _ensure_skinny_stream(state, name, src, comp, c, kk, n, dev, splits, rgc, ws
 def _build_fast_dispatch(weights, state):
     fast = {}
     ext = _get_ext()
-    for m in (1, 8, 16, 32, 128, 256):
+    m_list = list(range(1, 33)) + [64, 128, 256]
+    for m in m_list:
         for layer, w in weights.items():
             k = w.shape[1]
             choice = state.get("choice", {}).get((layer, m)) or _nearby_choice(layer, m, state) or _static_choice(layer, m, state)
@@ -3422,6 +3428,68 @@ def _build_fast_dispatch(weights, state):
                         return out
                     return run
                 fast[(layer, m)] = make_rgemv()
+
+            elif kind == "rk" and layer == "router" and "router_cat" in state and "rk_zc" in state:
+                rcat = state["router_cat"]
+                splits = _rk_splits(m, state.get("nsm", 132))
+                rk_zc = state["rk_zc"]
+                rk_fn = ext.rk
+                def make_rk(rcat=rcat, splits=splits, rk_zc=rk_zc, rk_fn=rk_fn, m=m, dtype=dtype):
+                    def run(x, n):
+                        out = torch.empty((m, n), dtype=dtype, device=x.device)
+                        rk_fn(rcat, x, out, splits, rk_zc)
+                        return out
+                    return run
+                fast[(layer, m)] = make_rk()
+
+            elif kind == "cutlass" and layer in state.get("cut_layers", ()) and _cut_ext is not None:
+                cut_w = state["raw"][layer]
+                cut_ws = state["cut_ws"]
+                cut_fn = _cut_ext.cut_gemm
+                def make_cut(cut_w=cut_w, cut_ws=cut_ws, cut_fn=cut_fn, m=m, dtype=dtype):
+                    def run(x, n):
+                        out = torch.empty((m, n), dtype=dtype, device=x.device)
+                        cut_fn(cut_w, x, out, cut_ws)
+                        return out
+                    return run
+                fast[(layer, m)] = make_cut()
+
+            elif kind == "torchT" and layer in state.get("rawT", {}):
+                w_t = state["rawT"][layer]
+                def make_torchT(w_t=w_t):
+                    def run(x, n):
+                        return torch.mm(x, w_t)
+                    return run
+                fast[(layer, m)] = make_torchT()
+
+            elif kind == "torch":
+                if layer == "router":
+                    r_hi = state.get("router_hi_t")
+                    r_lo = state.get("router_lo_t")
+                    if r_hi is not None and r_lo is not None:
+                        def make_torch_r(r_hi=r_hi, r_lo=r_lo):
+                            def run(x, n):
+                                acc = torch.mm(x, r_hi, out_dtype=torch.float32)
+                                acc += torch.mm(x, r_lo, out_dtype=torch.float32)
+                                return acc
+                            return run
+                        fast[(layer, m)] = make_torch_r()
+                elif layer in state.get("raw", {}):
+                    nn = UNPOOLER_SLICE_ROWS if (layer == "unpooler" and m <= 8) else w.shape[0]
+                    w_mat = state["raw"][layer][:nn]
+                    def make_torch_lin(w_mat=w_mat):
+                        def run(x, n):
+                            return F.linear(x, w_mat)
+                        return run
+                    fast[(layer, m)] = make_torch_lin()
+
+            elif kind in ("wide", "gemm", "gq", "gqx"):
+                cur_ch = choice
+                def make_ch(cur_ch=cur_ch, layer=layer, m=m, k=k):
+                    def run(x, n):
+                        return _run(cur_ch, x, layer, m, n, k, state)
+                    return run
+                fast[(layer, m)] = make_ch()
 
     state["fast_dispatch"] = fast
 
