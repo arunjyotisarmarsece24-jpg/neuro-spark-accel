@@ -1,91 +1,88 @@
-#!/usr/bin/env python3
-import glob
-import json
-import os
-import pty
-import select
-import shutil
 import subprocess
+import pty
+import os
 import sys
+import json
+import glob
 import time
 import urllib.request
 
-CONFIG_DIR = "/root/.config/okc"
-CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
-BACKUP_FILE = "/content/okc_config_backup.json"
 OKC_BIN = "/root/.okc/bin/okc"
+BACKUP_CONFIG = "/content/okc_config_backup.json"
+USER_CONFIG_DIR = "/root/.config/okc"
+USER_CONFIG_FILE = os.path.join(USER_CONFIG_DIR, "config.json")
 
-print("=================================================================")
-print("🚀 OKC LEADERBOARD RUNNER - NVIDIA H200 SM90a")
-print("=================================================================")
-
-# 1. Ensure okc binary is present
+# 1. Ensure OKC is installed
 if not os.path.exists(OKC_BIN):
-    print("\n[1/4] Installing okc CLI...")
-    subprocess.run("curl -fsSL https://openkernelchallenge.dev/install.sh | sh", shell=True, check=True)
-os.environ["PATH"] = "/root/.okc/bin:" + os.environ.get("PATH", "")
+    print("Installing okc CLI...")
+    res = subprocess.run("curl -fsSL https://openkernelchallenge.dev/install.sh | sh", shell=True)
+    if res.returncode != 0:
+        print("Failed to install okc CLI!", file=sys.stderr)
+        sys.exit(1)
 
 # 2. Restore token from backup if available
-if not os.path.exists(CONFIG_FILE) and os.path.exists(BACKUP_FILE):
-    os.makedirs(CONFIG_DIR, exist_ok=True)
-    shutil.copy(BACKUP_FILE, CONFIG_FILE)
-    print("✓ Restored OKC auth token from backup!")
+if not os.path.exists(USER_CONFIG_FILE) and os.path.exists(BACKUP_CONFIG):
+    print("Restoring saved credentials from /content/okc_config_backup.json...")
+    os.makedirs(USER_CONFIG_DIR, exist_ok=True)
+    with open(BACKUP_CONFIG, "r") as src, open(USER_CONFIG_FILE, "w") as dst:
+        dst.write(src.read())
 
 # 3. Check login status
-needs_login = True
-if os.path.exists(CONFIG_FILE):
-    test_run = subprocess.run([OKC_BIN, "problems"], capture_output=True, text=True)
-    if "not signed in" not in test_run.stdout.lower() and test_run.returncode == 0:
-        needs_login = False
-        print("\n[2/4] ✓ Already signed into OKC!")
-
-if needs_login:
-    print("\n[2/4] Authenticating with GitHub Device Flow...")
+check = subprocess.run([OKC_BIN, "login", "--check"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+if check.returncode != 0:
+    print("\nStarting automated GitHub Device Flow login...")
     master, slave = pty.openpty()
     proc = subprocess.Popen(
         [OKC_BIN, "login"],
-        stdin=slave, stdout=slave, stderr=slave, close_fds=True
+        stdin=slave,
+        stdout=master,
+        stderr=master,
+        close_fds=True
     )
     os.close(slave)
 
-    time.sleep(1.0)
-    os.write(master, b"y\n")
+    output = ""
+    logged_in = False
+    consent_sent = False
 
-    authenticated = False
-    start_time = time.time()
-    while time.time() - start_time < 300:
-        r, _, _ = select.select([master], [], [], 0.5)
-        if r:
-            try:
-                chunk = os.read(master, 1024)
-                if not chunk:
-                    break
-                text = chunk.decode("utf-8", errors="ignore")
-                sys.stdout.write(text)
-                sys.stdout.flush()
-
-                if "recruiting and business purposes" in text:
-                    os.write(master, b"y\n")
-
-                if "token saved" in text or "signed in as" in text:
-                    authenticated = True
-                    time.sleep(1.0)
-                    break
-            except OSError:
+    while True:
+        try:
+            chunk = os.read(master, 1024).decode('utf-8', errors='ignore')
+            if not chunk:
                 break
-        elif proc.poll() is not None:
+            output += chunk
+            sys.stdout.write(chunk)
+            sys.stdout.flush()
+
+            # Auto-accept terms
+            if "Accept terms and conditions?" in output and not consent_sent:
+                os.write(master, b"y\n")
+                consent_sent = True
+
+            # Auto-answer recruiter disclosure
+            if "recruiter" in output.lower() and "[y/N]" in output:
+                os.write(master, b"n\n")
+
+            if "Signed in as" in output:
+                logged_in = True
+                break
+        except OSError:
             break
 
-    try:
-        proc.terminate()
-        proc.wait(timeout=2)
-    except Exception:
-        pass
+    proc.wait()
+    os.close(master)
 
-    if os.path.exists(CONFIG_FILE):
-        os.makedirs(os.path.dirname(BACKUP_FILE), exist_ok=True)
-        shutil.copy(CONFIG_FILE, BACKUP_FILE)
-        print("\n✓ Auth token backed up successfully!")
+    if logged_in:
+        print("\n✓ Authentication successful!")
+        if os.path.exists(USER_CONFIG_FILE):
+            with open(USER_CONFIG_FILE, "r") as src, open(BACKUP_CONFIG, "w") as dst:
+                dst.write(src.read())
+            print("✓ Credentials backed up to /content/okc_config_backup.json")
+    else:
+        print("Login flow did not complete. Please check the output above.", file=sys.stderr)
+        sys.exit(1)
+else:
+    print(f"✓ Already authenticated: {check.stdout.strip()}")
 
 # 4. Fetch the latest Beast Kernel
 print("\n[3/4] Downloading latest Beast Kernel from GitHub...")
@@ -109,16 +106,15 @@ for line in sub_proc.stdout:
     sys.stdout.flush()
 sub_proc.wait()
 
-# 6. Parse and print profile JSON details if available
-profiles = sorted(glob.glob("muse_bf16_proj/profiles/*.json"), key=os.path.getmtime, reverse=True)
-if profiles:
+# 6. Parse and print cluster tune and disable log
+logs = sorted(glob.glob("muse_bf16_proj/profiles/*.log"), key=os.path.getmtime, reverse=True)
+if logs:
     try:
-        with open(profiles[0], "r") as f:
-            prof = json.load(f)
-        print("\n=== PROFILE JSON METRIC SUMMARY ===")
-        print("Metric:", prof.get("metric"))
-        print("Score:", prof.get("score"))
-        print("Speedup:", prof.get("speedup"))
-        print("Time (µs):", prof.get("time"))
+        with open(logs[0], "r", encoding="utf-8", errors="replace") as f:
+            log_text = f.read()
+        print("\n=== CLUSTER TUNE & DISABLE LOG ===")
+        for line in log_text.splitlines():
+            if "[okc]" in line or "disabled:" in line or "error" in line.lower():
+                print(line)
     except Exception as e:
-        pass
+        print("Log read error:", e)

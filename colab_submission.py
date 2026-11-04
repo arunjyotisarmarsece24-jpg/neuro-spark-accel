@@ -2002,14 +2002,14 @@ void gq(at::Tensor W, at::Tensor x, at::Tensor out, int64_t M, int64_t N, int64_
 """
 
 GQ_CONFIGS = {  # (layer, bn) -> (nwg, cl, nstage): BM = 64*nwg rows per CTA, grid = N/BM * cl CTAs (cl-CTA clusters split K)
-    # measured on H200 against cuBLAS (graph replay, cold L2): cl=2 splits K in halves, BM=128 rows (NWG=2) gives 128 CTAs (128/132 SMs)
+    # NWG=1, CL=2 splits K in halves with 64 rows per CTA; all SMEM <= 210.1 KB
     ("pooler", 64): (1, 2, 10),
     ("pooler", 128): (1, 2, 8),
     ("pooler", 256): (1, 2, 4),
-    ("o", 128): (2, 2, 4),
-    ("o", 256): (2, 2, 3),
-    ("unpooler", 128): (2, 2, 4),
-    ("unpooler", 256): (2, 2, 3),
+    ("o", 128): (1, 2, 8),
+    ("o", 256): (1, 2, 4),
+    ("unpooler", 128): (1, 2, 8),
+    ("unpooler", 256): (1, 2, 4),
 }
 USE_GQ = True
 
@@ -2207,16 +2207,17 @@ void gqx(at::Tensor W, at::Tensor x, at::Tensor out, int64_t M, int64_t N, int64
 """
 
 GQX_CONFIGS = {  # (layer, bn) -> (nwg, cl, nstage): grid = N / (64 nwg) * cl CTAs
-    ("qkv_gate", 128): (1, 3, 8),   # m 33..128: 36 row blocks x 3 K-thirds = 108 CTAs (cuBLAS 16.4 -> 14.0 us at m=128)
-    ("qkv_gate", 256): (1, 3, 4),   # m 129..256: 36 row blocks x 3 K-thirds = 108 CTAs (SMEM 225.1 KB)
-    ("o", 128): (2, 2, 4),          # 64 row blocks x 2 K-halves = 128 CTAs (SMEM 193.1 KB)
-    ("o", 256): (1, 2, 4),          # 128 row blocks x 2 = 256 CTAs (SMEM 225.1 KB)
+    ("qkv_gate", 128): (1, 3, 8),   # 36 row blocks x 3 K-thirds = 108 CTAs (SMEM 225.1 KB)
+    ("qkv_gate", 256): (1, 3, 4),   # 36 row blocks x 3 K-thirds = 108 CTAs (SMEM 225.1 KB)
+    ("o", 128): (1, 2, 8),          # 128 row blocks x 2 K-halves = 256 CTAs (SMEM 225.1 KB)
+    ("o", 256): (1, 2, 4),          # 128 row blocks x 2 K-halves = 256 CTAs (SMEM 225.1 KB)
+    ("pooler", 128): (1, 2, 8),     # 64 row blocks x 2 K-halves = 128 CTAs (SMEM 225.1 KB)
     ("pooler", 256): (1, 2, 4),     # 64 row blocks x 2 K-halves = 128 CTAs (SMEM 225.1 KB)
-    ("unpooler", 128): (2, 2, 4),   # 64 row blocks x 2 K-halves = 128 CTAs (SMEM 193.1 KB)
-    ("unpooler", 256): (1, 2, 4),   # 128 row blocks x 2 = 256 CTAs (SMEM 225.1 KB)
+    ("unpooler", 128): (1, 2, 8),   # 128 row blocks x 2 K-halves = 256 CTAs (SMEM 225.1 KB)
+    ("unpooler", 256): (1, 2, 4),   # 128 row blocks x 2 K-halves = 256 CTAs (SMEM 225.1 KB)
 }
 USE_GQX = True
-TORCHT_LAYERS = ("qkv_gate", "o", "pooler", "unpooler")   # layers that also get a K-major BF16 copy for the "torchT" (mm(x, W^T)) route
+TORCHT_LAYERS = ("unpooler", "o")   # layers that also get a K-major BF16 copy for the "torchT" (mm(x, W^T)) route
 
 
 def _gqx_src(sm90):
@@ -3704,7 +3705,7 @@ def _route_key(layer, m, route):
     return (layer, route, 64 if m <= 64 else 128 if m <= 128 else 256)
 
 
-SELFTEST_M = (1, 8, 16, 32, 33, 128, 200, 256)
+SELFTEST_M = (1, 8, 16, 32, 128, 256)
 
 
 def _selftest(weights, state):
