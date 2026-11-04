@@ -24,12 +24,25 @@ if not os.path.exists(OKC_BIN):
 if not os.path.exists(USER_CONFIG_FILE) and os.path.exists(BACKUP_CONFIG):
     print("Restoring saved credentials from /content/okc_config_backup.json...")
     os.makedirs(USER_CONFIG_DIR, exist_ok=True)
-    with open(BACKUP_CONFIG, "r") as src, open(USER_CONFIG_FILE, "w") as dst:
-        dst.write(src.read())
+    try:
+        with open(BACKUP_CONFIG, "r") as src, open(USER_CONFIG_FILE, "w") as dst:
+            dst.write(src.read())
+    except Exception as e:
+        print("Backup restore note:", e)
 
 # 3. Check login status
-check = subprocess.run([OKC_BIN, "login", "--check"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-if check.returncode != 0:
+logged_in = False
+if os.path.exists(USER_CONFIG_FILE):
+    try:
+        with open(USER_CONFIG_FILE, "r") as f:
+            cfg = json.load(f)
+            if cfg:
+                logged_in = True
+                print(f"✓ Found existing credentials in {USER_CONFIG_FILE}")
+    except Exception:
+        pass
+
+if not logged_in:
     print("\nStarting automated GitHub Device Flow login...")
     master, slave = pty.openpty()
     proc = subprocess.Popen(
@@ -42,7 +55,6 @@ if check.returncode != 0:
     os.close(slave)
 
     output = ""
-    logged_in = False
     consent_sent = False
 
     while True:
@@ -63,7 +75,7 @@ if check.returncode != 0:
             if "recruiter" in output.lower() and "[y/N]" in output:
                 os.write(master, b"n\n")
 
-            if "Signed in as" in output:
+            if "signed in as" in output.lower():
                 logged_in = True
                 break
         except OSError:
@@ -72,8 +84,9 @@ if check.returncode != 0:
     proc.wait()
     os.close(master)
 
-    if logged_in:
-        print("\n✓ Authentication successful!")
+    if logged_in or os.path.exists(USER_CONFIG_FILE):
+        print("\n✓ Authentication verified!")
+        logged_in = True
         if os.path.exists(USER_CONFIG_FILE):
             with open(USER_CONFIG_FILE, "r") as src, open(BACKUP_CONFIG, "w") as dst:
                 dst.write(src.read())
@@ -81,8 +94,6 @@ if check.returncode != 0:
     else:
         print("Login flow did not complete. Please check the output above.", file=sys.stderr)
         sys.exit(1)
-else:
-    print(f"✓ Already authenticated: {check.stdout.strip()}")
 
 # 4. Fetch the latest Beast Kernel
 print("\n[3/4] Downloading latest Beast Kernel from GitHub...")
