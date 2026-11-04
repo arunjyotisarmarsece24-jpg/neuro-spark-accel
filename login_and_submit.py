@@ -30,19 +30,12 @@ if not os.path.exists(USER_CONFIG_FILE) and os.path.exists(BACKUP_CONFIG):
     except Exception as e:
         print("Backup restore note:", e)
 
-# 3. Check login status
-logged_in = False
-if os.path.exists(USER_CONFIG_FILE):
-    try:
-        with open(USER_CONFIG_FILE, "r") as f:
-            cfg = json.load(f)
-            if cfg:
-                logged_in = True
-                print(f"✓ Found existing credentials in {USER_CONFIG_FILE}")
-    except Exception:
-        pass
-
-if not logged_in:
+# 3. Check login status via `okc problems`
+check = subprocess.run([OKC_BIN, "problems"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+if check.returncode == 0:
+    print("✓ Already authenticated with OKC cluster!")
+    logged_in = True
+else:
     print("\nStarting automated GitHub Device Flow login...")
     master, slave = pty.openpty()
     proc = subprocess.Popen(
@@ -55,6 +48,7 @@ if not logged_in:
     os.close(slave)
 
     output = ""
+    logged_in = False
     consent_sent = False
 
     while True:
@@ -95,11 +89,13 @@ if not logged_in:
         print("Login flow did not complete. Please check the output above.", file=sys.stderr)
         sys.exit(1)
 
-# 4. Fetch the latest Beast Kernel
+# 4. Fetch the latest Beast Kernel (cache-busted)
 print("\n[3/4] Downloading latest Beast Kernel from GitHub...")
 os.makedirs("muse_bf16_proj", exist_ok=True)
-kernel_url = "https://raw.githubusercontent.com/arunjyotisarmarsece24-jpg/neuro-spark-accel/main/colab_submission.py"
-urllib.request.urlretrieve(kernel_url, "muse_bf16_proj/submission.py")
+kernel_url = f"https://raw.githubusercontent.com/arunjyotisarmarsece24-jpg/neuro-spark-accel/main/colab_submission.py?v={int(time.time())}"
+req = urllib.request.Request(kernel_url, headers={"Cache-Control": "no-cache"})
+with urllib.request.urlopen(req) as resp, open("muse_bf16_proj/submission.py", "wb") as f_out:
+    f_out.write(resp.read())
 k_size = os.path.getsize("muse_bf16_proj/submission.py")
 print(f"✓ Kernel ready: {k_size:,} bytes")
 
