@@ -2002,8 +2002,14 @@ void gq(at::Tensor W, at::Tensor x, at::Tensor out, int64_t M, int64_t N, int64_
 """
 
 GQ_CONFIGS = {  # (layer, bn) -> (nwg, cl, nstage): BM = 64*nwg rows per CTA, grid = N/BM * cl CTAs (cl-CTA clusters split K)
-    # measured on H200 against cuBLAS (graph replay, cold L2): only the pooler shape wins (64 row blocks x 2 K halves)
-    ("pooler", 64): (1, 2, 10), ("pooler", 128): (1, 2, 8),
+    # measured on H200 against cuBLAS (graph replay, cold L2): cl=2 splits K in halves, BM=128 rows (NWG=2) gives 128 CTAs (128/132 SMs)
+    ("pooler", 64): (1, 2, 10),
+    ("pooler", 128): (1, 2, 8),
+    ("pooler", 256): (1, 2, 4),
+    ("o", 128): (2, 2, 4),
+    ("o", 256): (2, 2, 3),
+    ("unpooler", 128): (2, 2, 4),
+    ("unpooler", 256): (2, 2, 3),
 }
 USE_GQ = True
 
@@ -2202,6 +2208,12 @@ void gqx(at::Tensor W, at::Tensor x, at::Tensor out, int64_t M, int64_t N, int64
 
 GQX_CONFIGS = {  # (layer, bn) -> (nwg, cl, nstage): grid = N / (64 nwg) * cl CTAs
     ("qkv_gate", 128): (1, 3, 8),   # m 33..128: 36 row blocks x 3 K-thirds = 108 CTAs (cuBLAS 16.4 -> 14.0 us at m=128)
+    ("qkv_gate", 256): (1, 3, 4),   # m 129..256: 36 row blocks x 3 K-thirds = 108 CTAs (SMEM 225.1 KB)
+    ("o", 128): (2, 2, 4),          # 64 row blocks x 2 K-halves = 128 CTAs (SMEM 193.1 KB)
+    ("o", 256): (1, 2, 4),          # 128 row blocks x 2 = 256 CTAs (SMEM 225.1 KB)
+    ("pooler", 256): (1, 2, 4),     # 64 row blocks x 2 K-halves = 128 CTAs (SMEM 225.1 KB)
+    ("unpooler", 128): (2, 2, 4),   # 64 row blocks x 2 K-halves = 128 CTAs (SMEM 193.1 KB)
+    ("unpooler", 256): (1, 2, 4),   # 128 row blocks x 2 = 256 CTAs (SMEM 225.1 KB)
 }
 USE_GQX = True
 TORCHT_LAYERS = ("qkv_gate", "o", "pooler", "unpooler")   # layers that also get a K-major BF16 copy for the "torchT" (mm(x, W^T)) route
@@ -3492,7 +3504,33 @@ def _build_fast_dispatch(weights, state):
                         return run
                     fast[(layer, m)] = make_torch_lin()
 
-            elif kind in ("wide", "gemm", "gq", "gqx"):
+            elif kind == "gq" and (layer, _gq_bn(m)) in GQ_CONFIGS:
+                raw_w = state["raw"][layer]
+                bn = _gq_bn(m)
+                nwg, cl, ns = GQ_CONFIGS[(layer, bn)]
+                gq_fn = ext.gq
+                def make_gq(raw_w=raw_w, m=m, k=k, bn=bn, nwg=nwg, cl=cl, ns=ns, gq_fn=gq_fn):
+                    def run(x, n):
+                        out = torch.empty((m, n), dtype=torch.bfloat16, device=x.device)
+                        gq_fn(raw_w, x, out, m, n, k, bn, nwg, cl, ns)
+                        return out
+                    return run
+                fast[(layer, m)] = make_gq()
+
+            elif kind == "gqx" and (layer, _gqx_bn(m)) in GQX_CONFIGS:
+                raw_w = state["raw"][layer]
+                bn = _gqx_bn(m)
+                nwg, cl, ns = GQX_CONFIGS[(layer, bn)]
+                gqx_fn = ext.gqx
+                def make_gqx(raw_w=raw_w, m=m, k=k, bn=bn, nwg=nwg, cl=cl, ns=ns, gqx_fn=gqx_fn):
+                    def run(x, n):
+                        out = torch.empty((m, n), dtype=torch.bfloat16, device=x.device)
+                        gqx_fn(raw_w, x, out, m, n, k, bn, nwg, cl, ns)
+                        return out
+                    return run
+                fast[(layer, m)] = make_gqx()
+
+            elif kind in ("wide", "gemm"):
                 cur_ch = choice
                 def make_ch(cur_ch=cur_ch, layer=layer, m=m, k=k):
                     def run(x, n):
@@ -3964,6 +4002,8 @@ def _nearby_choice(layer, m, state):
         if ch is None:
             return None
     if ch[0] == "gq" and (layer, _gq_bn(m)) not in GQ_CONFIGS:
+        return None
+    if ch[0] == "gqx" and (layer, _gqx_bn(m)) not in GQX_CONFIGS:
         return None
     return ch
 
