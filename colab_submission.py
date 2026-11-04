@@ -3065,11 +3065,11 @@ SK2_CONFIGS = [  # (name, layer, n_rows, R rows/CTA, NT, NWR, WSK, UPW, NACC, CL
 ]
 SK2_PICK = {  # (layer, tokr) -> config name
     ('o', 8): 'o8h_r88',
-    ('o', 16): 'o16t_r144',
+    ('o', 16): 'o16t_r68',
     ('o', 32): 'o32h_r100',
-    ('pooler', 8): 'pooler8h_r192',
+    ('pooler', 8): 'pooler8h_r72',
     ('pooler', 16): 'pooler16t_r192',
-    ('pooler', 32): 'pooler32_r208',
+    ('pooler', 32): 'pooler32_r144',
     ('qkv_gate', 8): 'qkv8t_r144',
     ('qkv_gate', 16): 'qkv16t_r200',
     ('qkv_gate', 32): 'qkv32_r208',
@@ -3077,8 +3077,8 @@ SK2_PICK = {  # (layer, tokr) -> config name
     ('router', 16): 'router',
     ('router', 32): 'router',
     ('unpooler', 8): 'slice8_r192',
-    ('unpooler', 16): 'unpooler16t_r192',
-    ('unpooler', 32): 'unpooler32_r208',
+    ('unpooler', 16): 'unpooler16t_r72',
+    ('unpooler', 32): 'unpooler32_r144',
 }
 SK2_K = {"pooler": 8192, "unpooler": 4096, "o": 1024, "qkv_gate": 8192, "router": 8192}
 USE_SK2 = True
