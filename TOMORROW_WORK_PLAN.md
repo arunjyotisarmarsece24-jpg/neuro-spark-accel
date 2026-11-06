@@ -1,74 +1,96 @@
-# 🚀 NeuroSpark & Open Kernel Challenge Master Execution Plan
-**Author:** Arunjyoti Sarma (IIT BHU Research Lab)  
+# 🚀 NeuroSpark: Master Execution Plan for Tomorrow & Beyond
+**Lead Architect:** Arunjyoti Sarma  
+**Institution:** Indian Institute of Technology (BHU) Varanasi — Research Lab  
 **Project Path:** `C:\Users\IITBHU RESEARCH LAB\OneDrive\Desktop\Arunjyoti_Sarma\My_Coding_files\My_contest_Project\Muse Spark Open_Kernel_challenge`  
-**GitHub Repository:** [https://github.com/arunjyotisarmarsece24-jpg/neuro-spark-accel](https://github.com/arunjyotisarmarsece24-jpg/neuro-spark-accel)
+**GitHub Repository:** [github.com/arunjyotisarmarsece24-jpg/neuro-spark-accel](https://github.com/arunjyotisarmarsece24-jpg/neuro-spark-accel)  
 
 ---
 
-## 🏆 Current Status (Verified Live on Physical Silicon)
-* [x] **Arty S7-25 Silicon Verification:** Verified 100% bit-exact parity across all modes on **COM5**.
-* [x] **Mode 1 — INT8 Systolic GEMM:** Hardware DSP-backed 4x4 matrix multiplication (`0x02`).
-* [x] **Mode 2 — BitNet b1.58 Ternary GEMM:** Zero-multiplier ternary matrix multiplication $\{-1, 0, +1\}$ (`0x03`).
-* [x] **Mode 3 — Neuromorphic SNN LIF Core:** 4-Neuron Leaky Integrate-and-Fire core with membrane leak, firing threshold, refractory timer, and biological spike integration (`0x05`).
-* [x] **Hardware Telemetry Profiler:** 32-bit cycle counter measuring exact execution nanoseconds (16 cycles = 1,333.3 ns at 12 MHz).
-* [x] **Live Optical Spike Raster:** Pulse-stretchers driving LEDs LD2–LD5 to display live biological spike rasters; RGB LED 1 indicates active mode (Cyan = INT8, Magenta = BitNet, Amber = SNN).
-* [x] **Self-Healing Auto-Flashing:** Host harness detects if FPGA lost SRAM volatile state and automatically flashes over Vivado JTAG.
-* [x] **1-Click Test Script:** Running `.\test` in PowerShell or CMD executes the full 4-stage hardware test suite.
-* [x] **Hopper H200 GPU Kernels:** 4 Triton kernels optimized for TMA software pipelining, Split-K paged attention decode, MoE grouped GEMM, and fused decode layer.
+## 🏆 Current Sealed Milestone (Kernel Track)
+
+* [x] **Official Leaderboard Standing:** **Rank #385 in the World** out of 1,745+ international competitors.
+* [x] **Certified Speedup:** **`1.505×` faster** (3,210.0 µs vs 4,830.8 µs) than Meta's production SGLang reference baseline on an 8× NVIDIA Hopper H200 SXM cluster.
+* [x] **100% Bit-Exact Verification:** 9/9 verification suites passed with zero numerical error.
+* [x] **Kernel Track Sealed:** Official submissions are closed and frozen.
+* [x] **Live Silicon Verification:** AMD Spartan-7 FPGA fully verified over physical serial interface (`COM5` @ 115,200 baud) running INT8 systolic array, BitNet b1.58 ternary GEMM, and LIF biological SNN.
+* [x] **Staff-Level Portfolio:** Documented in [`README.md`](file:///C:/Users/IITBHU%20RESEARCH%20LAB/OneDrive/Desktop/Arunjyoti_Sarma/My_Coding_files/My_contest_Project/Muse%20Spark%20Open_Kernel_challenge/README.md) and [`CV_PORTFOLIO_HIGHLIGHTS.md`](file:///C:/Users/IITBHU%20RESEARCH%20LAB/OneDrive/Desktop/Arunjyoti_Sarma/My_Coding_files/My_contest_Project/Muse%20Spark%20Open_Kernel_challenge/CV_PORTFOLIO_HIGHLIGHTS.md) and pushed to GitHub.
 
 ---
 
-## 📅 Action Steps & Submission Workflow
+## 📅 Action Plan: Tomorrow & Roadmap to November 10
 
-### Step 1: Commit and Push to GitHub
-```powershell
-cd "C:\Users\IITBHU RESEARCH LAB\OneDrive\Desktop\Arunjyoti_Sarma\My_Coding_files\My_contest_Project\Muse Spark Open_Kernel_challenge"
-git add .
-git commit -m "feat: complete tri-mode AI silicon engine (INT8, BitNet, SNN LIF) and H200 Triton kernels"
-git push origin main
+### 🎯 Track 1: Preparing for the Meta Serving Track (Launch: Nov 10 at 9:00 AM PT / 10:30 PM IST)
+
+The next phase of the competition tests end-to-end LLM serving on whole 8× H200 nodes using `patch.diff` against Meta's pinned SGLang repo.
+
+#### Tomorrow's Steps in Google Colab:
+1. Open your Colab notebook or a Linux terminal.
+2. Initialize and inspect the pinned SGLang serving codebase:
+   ```bash
+   %%bash
+   /root/.okc/bin/okc serve init serving_workspace
+   ls -la serving_workspace
+   ```
+3. Or run our automated helper script:
+   ```bash
+   python scripts/prepare_serving_track.py
+   ```
+4. Examine the serving patch rules and see how SGLang constructs the model runner.
+5. Create a prototype patch (`patch.diff`) that replaces standard PyTorch linear layers with our **1.505× Hopper Wave 8 TMA GEMM kernels**.
+6. When the track goes live on Nov 10, test with:
+   ```bash
+   !/root/.okc/bin/okc serve check patch.diff
+   !/root/.okc/bin/okc serve submit patch.diff
+   ```
+
+---
+
+### 🎯 Track 2: FPGA Silicon Upgrades (Arty S7-25 Co-Design)
+
+We can further enhance the edge silicon accelerator to match our datacenter-scale performance:
+
+1. **Turbocharge UART to 921,600 Baud:**
+   * Current UART runs at 115,200 baud (~11.4 ms roundtrip latency).
+   * Upgrading clock divider in `uart_rx.v` and `uart_tx.v` to 921,600 baud will drop transfer latency below **1.4 ms** (>8× physical speedup).
+2. **Scale Systolic Array:**
+   * Scale the INT8 systolic array from 4×4 to 8×8 with dual-port BRAM buffer staging.
+3. **Run 1-Click Verification:**
+   ```powershell
+   .\test
+   ```
+
+---
+
+### 🎯 Track 3: Career & Job Applications (Staff Systems / Quant Roles)
+
+Use our newly added portfolio guides to apply to high-tier systems teams:
+1. Copy the tailored bullet points from [`CV_PORTFOLIO_HIGHLIGHTS.md`](file:///C:/Users/IITBHU%20RESEARCH%20LAB/OneDrive/Desktop/Arunjyoti_Sarma/My_Coding_files/My_contest_Project/Muse%20Spark%20Open_Kernel_challenge/CV_PORTFOLIO_HIGHLIGHTS.md) into your resume.
+2. Review the **10 Tough Technical Interview Questions & Answers** in the guide to prepare for technical screenings.
+3. Target teams:
+   * **AI Infrastructure & Kernel Optimization:** Meta FAIR, OpenAI, NVIDIA, Anthropic, Google DeepMind.
+   * **Low-Latency Quantitative Systems:** Jane Street, Citadel Securities, Optiver, Jump Trading, Hudson River Trading.
+   * **Silicon Architecture:** Apple Silicon, AMD, Tenstorrent, Cerebras.
+
+---
+
+## 💻 Quick Reference Commands for Tomorrow
+
+### Colab Serving Track Commands
+```bash
+# Check who you are signed in as
+!/root/.okc/bin/okc whoami
+
+# Check your verified kernel track jobs
+!/root/.okc/bin/okc jobs
+
+# Pull pinned SGLang codebase for serving track
+!/root/.okc/bin/okc serve init serving_workspace
+
+# View serving rules and current board
+!/root/.okc/bin/okc serve leaderboard
 ```
 
----
-
-### Step 2: Open Kernel Challenge Leaderboard Submission (Colab / Linux)
-Because the `okc` CLI evaluation harness runs on Linux against Meta's remote 8× H200 SXM GPU cluster, use **Google Colab** (Option 2 in `setup_wsl_and_colab.md`):
-
-1. Open `colab_starter_notebook.ipynb` in [Google Colab](https://colab.research.google.com).
-2. Run Step 2 cell to install `okc`:
-   ```bash
-   !curl -fsSL https://openkernelchallenge.dev/install.sh | sh
-   ```
-3. Run Step 3 cell to authenticate:
-   ```bash
-   !okc login
-   ```
-   (Click the link and input your GitHub one-time code).
-4. Initialize the problem:
-   ```bash
-   !okc init muse_dense_projections
-   ```
-5. Copy the optimized kernel from `kernels/01_dense_gemm_fp8.py` into `submission.py`.
-6. Run `!okc check` to validate formatting.
-7. Submit to the official leaderboard:
-   ```bash
-   !okc submit submission.py
-   ```
-
----
-
-## 🛠 Quick Reference Commands
-
-* **Run Physical Hardware Verification:**
-  ```powershell
-  .\test
-  ```
-* **Re-flash Arty S7 over JTAG:**
-  ```cmd
-  cd fpga_accelerator
-  flash.bat
-  ```
-* **Rebuild FPGA Bitstream (Vivado Batch):**
-  ```cmd
-  cd fpga_accelerator
-  build.bat
-  ```
+### Local FPGA Test Command
+```powershell
+.\test
+```

@@ -1,30 +1,34 @@
 ================================================================================
-NEUROSPARK AI SILICON & OPEN KERNEL CHALLENGE RESUME PROMPT
+NEUROSPARK & META OPEN KERNEL CHALLENGE RESUME PROMPT
 ================================================================================
 
-Hello! Let's resume work on my project: "NeuroSpark: Tri-Mode AI Silicon Engine & Open Kernel Challenge".
+Hello! Let's resume work on my project: "NeuroSpark: Tri-Mode AI Silicon Engine & Datacenter GPU Accelerators".
 
-Project Path:
+Project Directory:
 C:\Users\IITBHU RESEARCH LAB\OneDrive\Desktop\Arunjyoti_Sarma\My_Coding_files\My_contest_Project\Muse Spark Open_Kernel_challenge
 
 GitHub Repository:
 https://github.com/arunjyotisarmarsece24-jpg/neuro-spark-accel
 
-Current System State:
-1. My Digilent Arty S7-25 FPGA is connected via micro-USB on COM5.
-2. The FPGA is configured with the Tri-Mode AI Silicon Engine:
-   - 4x4 INT8 Systolic GEMM Core (Opcode 0x02)
-   - 4x4 BitNet b1.58 Multiplierless Ternary GEMM Core (Opcode 0x03)
-   - 4-Neuron Leaky Integrate-and-Fire (LIF) Neuromorphic SNN Core (Opcode 0x05)
-   - 32-bit Hardware Nanosecond Cycle Profiler
-   - Real-time optical spike raster and pulse-stretchers active on LEDs LD2-LD5 and RGB LEDs.
-3. The repository is published and tracked on branch 'main' with a hardened .gitignore.
-4. Running ".\test" executes the full 4-stage hardware test over COM5.
+Current Status & Milestones:
+1. Kernel Track Sealed:
+   - Official Leaderboard Standing: Rank #385 in the World (1,745+ competitors)
+   - Verified Speedup: 1.505x vs Meta SGLang baseline (3,210.0 µs vs 4,830.8 µs)
+   - Accuracy: 100% Bit-Exact Parity (9/9 suites passed) on 8x NVIDIA Hopper H200 SXM
+2. Physical Silicon Verification:
+   - Digilent Arty S7-25 FPGA verified on COM5 at 115,200 baud
+   - Running INT8 systolic array, BitNet b1.58 ternary GEMM, and LIF neuromorphic SNN
+   - Running ".\test" executes the full 4-stage hardware test suite
+3. Master Portfolio Documentation:
+   - README.md and CV_PORTFOLIO_HIGHLIGHTS.md contain full latency accounting, roofline math, and 10 Staff-level interview defenses.
+   - Pushed to remote GitHub on branch 'main'.
 
-Next Goals:
-1. Complete the SNN biological spike integration verification against PyTorch/Brian2 reference.
-2. Turbocharge UART communication to 921,600 Baud for ultra-low latency (<2 ms roundtrip).
-3. Connect to the Open Kernel Challenge (openkernelchallenge.dev) and submit our Hopper H200 Triton kernels to the official leaderboard.
+Today's Tasks to Pick Up:
+1. Prepare for the Meta Serving Track (Opens Nov 10 at 9:00 AM PT / 10:30 PM IST):
+   - Inspect pinned SGLang codebase using "okc serve init serving_workspace".
+   - Review patch rules and draft patch.diff to integrate our 1.505x Hopper kernels.
+2. Upgrade FPGA UART baud rate from 115,200 to 921,600 baud for sub-2 ms latency.
+3. Review job applications and technical interview prep using CV_PORTFOLIO_HIGHLIGHTS.md.
 
 Please read TOMORROW_WORK_PLAN.md in the project folder and let's get started!
 ================================================================================
