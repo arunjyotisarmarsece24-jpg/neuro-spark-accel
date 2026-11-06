@@ -6,6 +6,7 @@ import json
 import glob
 import time
 import urllib.request
+import re
 
 OKC_BIN = "/root/.okc/bin/okc"
 BACKUP_CONFIG = "/content/okc_config_backup.json"
@@ -30,13 +31,8 @@ if not os.path.exists(USER_CONFIG_FILE) and os.path.exists(BACKUP_CONFIG):
     except Exception as e:
         print("Backup restore note:", e)
 
-# 3. Check login status via `okc problems`
-check = subprocess.run([OKC_BIN, "problems"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-if check.returncode == 0:
-    print("✓ Already authenticated with OKC cluster!")
-    logged_in = True
-else:
-    print("\nStarting automated GitHub Device Flow login...")
+def do_login():
+    print("\nStarting GitHub Device Flow login...")
     master, slave = pty.openpty()
     proc = subprocess.Popen(
         [OKC_BIN, "login"],
@@ -69,7 +65,7 @@ else:
             if "recruiter" in output.lower() and "[y/N]" in output:
                 os.write(master, b"n\n")
 
-            if "signed in as" in output.lower():
+            if "signed in as" in output.lower() or "token saved" in output.lower():
                 logged_in = True
                 break
         except OSError:
@@ -80,13 +76,20 @@ else:
 
     if logged_in or os.path.exists(USER_CONFIG_FILE):
         print("\n✓ Authentication verified!")
-        logged_in = True
         if os.path.exists(USER_CONFIG_FILE):
             with open(USER_CONFIG_FILE, "r") as src, open(BACKUP_CONFIG, "w") as dst:
                 dst.write(src.read())
             print("✓ Credentials backed up to /content/okc_config_backup.json")
+        return True
     else:
-        print("Login flow did not complete. Please check the output above.", file=sys.stderr)
+        print("\nLogin flow did not complete. Please check the output above.", file=sys.stderr)
+        return False
+
+# 3. Check login status: config file must exist
+if os.path.exists(USER_CONFIG_FILE) and os.path.getsize(USER_CONFIG_FILE) > 5:
+    print("✓ Found existing OKC authentication token!")
+else:
+    if not do_login():
         sys.exit(1)
 
 # 4. Fetch the latest Beast Kernel (cache-busted)
@@ -99,24 +102,32 @@ with urllib.request.urlopen(req) as resp, open("muse_bf16_proj/submission.py", "
 k_size = os.path.getsize("muse_bf16_proj/submission.py")
 print(f"✓ Kernel ready: {k_size:,} bytes")
 
-# 5. Submit directly to Meta H200 cluster
-print("\n[4/4] Submitting to Meta H200 cluster & leaderboard...\n")
-sub_proc = subprocess.Popen(
-    [OKC_BIN, "submit", "muse_bf16_proj/submission.py"],
-    stdout=subprocess.PIPE,
-    stderr=subprocess.STDOUT,
-    text=True,
-    bufsize=1
-)
-submit_output = ""
-for line in sub_proc.stdout:
-    sys.stdout.write(line)
-    sys.stdout.flush()
-    submit_output += line
-sub_proc.wait()
+def run_submit():
+    print("\n[4/4] Submitting to Meta H200 cluster & leaderboard...\n")
+    sub_proc = subprocess.Popen(
+        [OKC_BIN, "submit", "muse_bf16_proj/submission.py"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1
+    )
+    submit_output = ""
+    for line in sub_proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        submit_output += line
+    sub_proc.wait()
+    return submit_output
+
+submit_output = run_submit()
+
+# If not signed in, prompt login and retry submit
+if "not signed in" in submit_output.lower():
+    print("\n[!] Token was missing or invalid. Launching login now...")
+    if do_login():
+        submit_output = run_submit()
 
 # If submission succeeded or matched an earlier job, auto-fetch status
-import re
 match = re.search(r"okc status ([0-9a-fA-F]+)", submit_output)
 if match:
     job_id = match.group(1)
