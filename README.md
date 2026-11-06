@@ -57,14 +57,15 @@ Verified on Meta's official evaluation cluster (`openkernelchallenge.dev` / Meta
 
 ```text
 ✓ muse_bf16_proj passed  (Hopper SM90a Lossless 12-Bit Tensor-Core Architecture)
-  Official Leaderboard Standing:
-  #446   arunjyotisarmarsece24-jpg (IIT BHU Research Lab)   1.505× (Top Tier)
+  Official Final Leaderboard Standing (Kernel Track Closed):
+  #385   arunjyotisarmarsece24-jpg (IIT BHU Research Lab)   1.505× (Top Tier Worldwide)
          sglang reference                                    1.000×
 
   Performance Progression:
   • v1 Baseline (Job d587705cc0174940): 1.024× (Rank #1658)
   • v2 Optimized cuBLASLt (Job 50e44df7f7014669): 1.048× (Rank #1631)
-  • v3 Lossless 12-Bit TMA/WGMMA Tensor-Core: 1.505× (Rank #446 — +1,212 Rank Jump!)
+  • v3 Final Lossless 12-Bit TMA/WGMMA Tensor-Core: 1.505× (Rank #385 out of 1,745+ globally — +1,273 Rank Jump!)
+  • Next Phase: Serving Track opens November 10, 2026 at 9:00 AM PT!
 ```
 
 ### Detailed Microbenchmark Breakdown vs SGLang Reference (Job `50e44df7f7014669`)
