@@ -2858,7 +2858,7 @@ using Gemm128 = cutlass::gemm::device::GemmUniversalAdapter<Kernel128>;
 
 int64_t cut_ws(at::Tensor W, at::Tensor x, at::Tensor out) {
   const int M = W.size(0), K = W.size(1), N = x.size(0);
-  if (M >= 8192 && N >= 128) {
+  if (M >= 8192 && N >= 256) {
     auto sA = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideA{}, cute::make_shape(M, K, 1));
     auto sB = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideB{}, cute::make_shape(N, K, 1));
     auto sC = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideC{}, cute::make_shape(M, N, 1));
@@ -2880,7 +2880,7 @@ int64_t cut_ws(at::Tensor W, at::Tensor x, at::Tensor out) {
 void cut_gemm(at::Tensor W, at::Tensor x, at::Tensor out, at::Tensor ws) {
   const int M = W.size(0), K = W.size(1), N = x.size(0);
   auto st = at::cuda::getCurrentCUDAStream();
-  if (M >= 8192 && N >= 128) {
+  if (M >= 8192 && N >= 256) {
     auto sA = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideA{}, cute::make_shape(M, K, 1));
     auto sB = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideB{}, cute::make_shape(N, K, 1));
     auto sC = cutlass::make_cute_packed_stride(typename Gemm128::GemmKernel::StrideC{}, cute::make_shape(M, N, 1));
@@ -2924,7 +2924,7 @@ def _build_cutlass():
         if not all(os.path.isdir(d) for d in inc):
             raise RuntimeError("CUTLASS headers missing under " + root)
         _cut_ext = load_inline(
-            name=f"okc_bf16proj_v142_cutlass_{major}{minor}a",
+            name=f"okc_bf16proj_v143_cutlass_{major}{minor}a",
             cpp_sources="#include <torch/extension.h>\nint64_t cut_ws(at::Tensor W, at::Tensor x, at::Tensor out);\n"
                         "void cut_gemm(at::Tensor W, at::Tensor x, at::Tensor out, at::Tensor ws);",
             cuda_sources=CUTLASS_SRC, functions=["cut_ws", "cut_gemm"], extra_include_paths=inc,
@@ -3428,6 +3428,7 @@ def _build_fast_dispatch(weights, state):
     for m in m_list:
         for layer, w in weights.items():
             k = w.shape[1]
+            n = UNPOOLER_SLICE_ROWS if (layer == "unpooler" and m <= 8) else w.shape[0]
             choice = state.get("choice", {}).get((layer, m)) or _nearby_choice(layer, m, state) or _static_choice(layer, m, state)
             kind = choice[0]
             dtype = torch.float32 if layer == "router" else torch.bfloat16
@@ -3438,8 +3439,8 @@ def _build_fast_dispatch(weights, state):
                 tokr = _sk2_tokr(m)
                 dummy = state["dummy"]
                 sk2_fn = ext.sk2
-                def make_sk2(stream=stream, tab=tab, pmax=pmax, b4=b4, m=m, k=k, ci=ci, tokr=tokr, dummy=dummy, sk2_fn=sk2_fn, dtype=dtype):
-                    def run(x, n):
+                def make_sk2(stream=stream, tab=tab, pmax=pmax, b4=b4, m=m, n=n, k=k, ci=ci, tokr=tokr, dummy=dummy, sk2_fn=sk2_fn, dtype=dtype):
+                    def run(x):
                         out = torch.empty((m, n), dtype=dtype, device=x.device)
                         sk2_fn(stream, x, out, tab, pmax, b4, m, n, k, ci, tokr, 0, dummy)
                         return out
@@ -3451,8 +3452,8 @@ def _build_fast_dispatch(weights, state):
                 rows, nth = CG_CONFIGS[layer]
                 L, C, tab, pmax, b4 = cg["L"], cg["C"], cg["tab"], cg["pmax"], cg["base4"]
                 cgemv_fn = ext.cgemv
-                def make_cgemv(L=L, C=C, tab=tab, pmax=pmax, b4=b4, rows=rows, nth=nth, cgemv_fn=cgemv_fn, m=m, dtype=dtype):
-                    def run(x, n):
+                def make_cgemv(L=L, C=C, tab=tab, pmax=pmax, b4=b4, rows=rows, nth=nth, cgemv_fn=cgemv_fn, m=m, n=n, dtype=dtype):
+                    def run(x):
                         out = torch.empty((m, n), dtype=dtype, device=x.device)
                         cgemv_fn(L, C, x, tab, pmax, out, b4, rows, nth)
                         return out
@@ -3462,8 +3463,8 @@ def _build_fast_dispatch(weights, state):
             elif kind == "sgemv" and layer in state.get("raw", {}) and _route_key(layer, m, "sgemv") not in state.get("disabled", ()):
                 raw_w = state["raw"][layer]
                 sgemv_fn = ext.sgemv
-                def make_sgemv(raw_w=raw_w, sgemv_fn=sgemv_fn, m=m, dtype=dtype):
-                    def run(x, n):
+                def make_sgemv(raw_w=raw_w, sgemv_fn=sgemv_fn, m=m, n=n, dtype=dtype):
+                    def run(x):
                         out = torch.empty((m, n), dtype=dtype, device=x.device)
                         sgemv_fn(raw_w, x, out, n)
                         return out
@@ -3473,8 +3474,8 @@ def _build_fast_dispatch(weights, state):
             elif kind == "rgemv" and "router_f32" in state and _route_key(layer, m, "rgemv") not in state.get("disabled", ()):
                 rf32 = state["router_f32"]
                 rgemv_fn = ext.rgemv
-                def make_rgemv(rf32=rf32, m=m, rgemv_fn=rgemv_fn, dtype=dtype):
-                    def run(x, n):
+                def make_rgemv(rf32=rf32, m=m, n=n, rgemv_fn=rgemv_fn, dtype=dtype):
+                    def run(x):
                         out = torch.empty((m, n), dtype=dtype, device=x.device)
                         rgemv_fn(rf32, x, out, m)
                         return out
@@ -3486,8 +3487,8 @@ def _build_fast_dispatch(weights, state):
                 splits = _rk_splits(m, state.get("nsm", 132))
                 rk_zc = state["rk_zc"]
                 rk_fn = ext.rk
-                def make_rk(rcat=rcat, splits=splits, rk_zc=rk_zc, rk_fn=rk_fn, m=m, dtype=dtype):
-                    def run(x, n):
+                def make_rk(rcat=rcat, splits=splits, rk_zc=rk_zc, rk_fn=rk_fn, m=m, n=n, dtype=dtype):
+                    def run(x):
                         out = torch.empty((m, n), dtype=dtype, device=x.device)
                         rk_fn(rcat, x, out, splits, rk_zc)
                         return out
@@ -3498,8 +3499,8 @@ def _build_fast_dispatch(weights, state):
                 cut_w = state["raw"][layer]
                 cut_ws = state["cut_ws"]
                 cut_fn = _cut_ext.cut_gemm
-                def make_cut(cut_w=cut_w, cut_ws=cut_ws, cut_fn=cut_fn, m=m, dtype=dtype):
-                    def run(x, n):
+                def make_cut(cut_w=cut_w, cut_ws=cut_ws, cut_fn=cut_fn, m=m, n=n, dtype=dtype):
+                    def run(x):
                         out = torch.empty((m, n), dtype=dtype, device=x.device)
                         cut_fn(cut_w, x, out, cut_ws)
                         return out
@@ -3507,13 +3508,10 @@ def _build_fast_dispatch(weights, state):
                 fast[(layer, m)] = make_cut()
 
             elif kind == "torchT" and layer in state.get("rawT", {}):
-                nn = UNPOOLER_SLICE_ROWS if (layer == "unpooler" and m <= 8) else w.shape[0]
-                wt = state["rawT"][layer][:, :nn].contiguous() if nn < w.shape[0] else state["rawT"][layer]
+                wt = state["rawT"][layer][:, :n].contiguous() if n < w.shape[0] else state["rawT"][layer]
                 def make_torchT(wt=wt):
-                    def run(x, n):
-                        if n == wt.shape[1]:
-                            return torch.mm(x, wt)
-                        return torch.mm(x, wt[:, :n])
+                    def run(x):
+                        return torch.mm(x, wt)
                     return run
                 fast[(layer, m)] = make_torchT()
 
@@ -3523,20 +3521,17 @@ def _build_fast_dispatch(weights, state):
                     r_lo = state.get("router_lo_t")
                     if r_hi is not None and r_lo is not None:
                         def make_torch_r(r_hi=r_hi, r_lo=r_lo):
-                            def run(x, n):
+                            def run(x):
                                 out = torch.mm(x, r_hi, out_dtype=torch.float32)
                                 out.addmm_(x, r_lo)
                                 return out
                             return run
                         fast[(layer, m)] = make_torch_r()
                 elif layer in state.get("raw", {}):
-                    nn = UNPOOLER_SLICE_ROWS if (layer == "unpooler" and m <= 8) else w.shape[0]
-                    wm = state["raw"][layer][:nn].contiguous() if nn < w.shape[0] else state["raw"][layer]
+                    wm = state["raw"][layer][:n].contiguous() if n < w.shape[0] else state["raw"][layer]
                     def make_torch_lin(wm=wm):
-                        def run(x, n):
-                            if n == wm.shape[0]:
-                                return F.linear(x, wm)
-                            return F.linear(x, wm[:n])
+                        def run(x):
+                            return F.linear(x, wm)
                         return run
                     fast[(layer, m)] = make_torch_lin()
 
@@ -3545,8 +3540,8 @@ def _build_fast_dispatch(weights, state):
                 bn = _gq_bn(m)
                 nwg, cl, ns = GQ_CONFIGS[(layer, bn)]
                 gq_fn = ext.gq
-                def make_gq(raw_w=raw_w, m=m, k=k, bn=bn, nwg=nwg, cl=cl, ns=ns, gq_fn=gq_fn):
-                    def run(x, n):
+                def make_gq(raw_w=raw_w, m=m, n=n, k=k, bn=bn, nwg=nwg, cl=cl, ns=ns, gq_fn=gq_fn):
+                    def run(x):
                         out = torch.empty((m, n), dtype=torch.bfloat16, device=x.device)
                         gq_fn(raw_w, x, out, m, n, k, bn, nwg, cl, ns)
                         return out
@@ -3558,8 +3553,8 @@ def _build_fast_dispatch(weights, state):
                 bn = _gqx_bn(m)
                 nwg, cl, ns = GQX_CONFIGS[(layer, bn)]
                 gqx_fn = ext.gqx
-                def make_gqx(raw_w=raw_w, m=m, k=k, bn=bn, nwg=nwg, cl=cl, ns=ns, gqx_fn=gqx_fn):
-                    def run(x, n):
+                def make_gqx(raw_w=raw_w, m=m, n=n, k=k, bn=bn, nwg=nwg, cl=cl, ns=ns, gqx_fn=gqx_fn):
+                    def run(x):
                         out = torch.empty((m, n), dtype=torch.bfloat16, device=x.device)
                         gqx_fn(raw_w, x, out, m, n, k, bn, nwg, cl, ns)
                         return out
@@ -3568,8 +3563,8 @@ def _build_fast_dispatch(weights, state):
 
             elif kind in ("wide", "gemm"):
                 cur_ch = choice
-                def make_ch(cur_ch=cur_ch, layer=layer, m=m, k=k):
-                    def run(x, n):
+                def make_ch(cur_ch=cur_ch, layer=layer, m=m, n=n, k=k):
+                    def run(x):
                         return _run(cur_ch, x, layer, m, n, k, state)
                     return run
                 fast[(layer, m)] = make_ch()
@@ -4053,7 +4048,7 @@ def kernel_fn(data, state):
     if fast is not None:
         runner = fast.get((cfg["layer"], cfg["m"]))
         if runner is not None:
-            return runner(data["x"], cfg["n"])
+            return runner(data["x"])
     x = data["x"]
     layer, m, n, k = cfg["layer"], cfg["m"], cfg["n"], cfg["k"]
     choice = state.get("choice", {}).get((layer, m)) or _nearby_choice(layer, m, state) or _static_choice(layer, m, state)
